@@ -74,7 +74,7 @@ Each unknown below changes the design. We should stay robust across all of them 
 
 ## 7. Requirements
 
-Derived from the sections above. Section 02 (design principles and threat model) will refine these.
+Derived from the sections above. The principles doc (written after the architecture exploration in [02](02-architecture-options.md)) will refine these.
 
 **Must**
 - M1. Never agree to a deal past our reservation price, whatever the opponent says.

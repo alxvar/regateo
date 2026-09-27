@@ -16,7 +16,12 @@ from regateo.cli import format as fmt
 from regateo.core.config import configs_dir, data_dir, load_env, load_yaml
 from regateo.core.scenario import ScenarioSpec, sample_scenarios
 from regateo.gym import GymSpec, build_gym_report, run_gym
+from regateo.llm.cache import CachedClient, CacheMode
+from regateo.llm.profiles import load_profile
+from regateo.llm.registry import get_client
 from regateo.referee.audit import MatchMessages, audit_readings
+from regateo.referee.audit import reread as reread_transcript
+from regateo.referee.registry import build_reader
 from regateo.runner import MatchJob, RunSettings, RunSummary, match_id, run_jobs
 from regateo.storage import Store
 
@@ -161,6 +166,9 @@ def report(run_id: str, db: DbOpt = None) -> None:
 def readings(
     run_id: str,
     examples: Annotated[int, typer.Option(help="mismatches to print")] = 20,
+    reread: Annotated[str | None, typer.Option(
+        help="re-read the transcripts with this reader first, e.g. shadow:rules+llm:qwen-local")] = None,
+    concurrency: int = 16,
     db: DbOpt = None,
 ) -> None:
     """How well the referee read a run's messages, checked against what each agent meant."""
@@ -172,6 +180,15 @@ def readings(
                                  messages=await store.match_messages(row.id))
                    for row in await store.list_matches(run_id)]
         await store.close()
+        if reread:
+            reader = build_reader(reread, lambda profile: CachedClient(
+                get_client(load_profile(profile)), data_dir() / "llm_cache.db", CacheMode.READWRITE))
+            gate = asyncio.Semaphore(concurrency)
+
+            async def one(mm: MatchMessages) -> MatchMessages:
+                async with gate:
+                    return mm.model_copy(update={"messages": await reread_transcript(mm.messages, reader)})
+            matches = list(await asyncio.gather(*(one(mm) for mm in matches)))
         typer.echo(fmt.reading_audit(audit_readings(run_id, matches, max_examples=examples)))
 
     asyncio.run(go())

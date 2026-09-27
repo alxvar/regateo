@@ -33,6 +33,7 @@ LLM runs use model profiles in `backend/configs/models/`. For local Qwen (Qwen3.
 - **match:** one negotiation between two agents on one scenario.
 - **gym:** head-to-head experiments. Agent A plays agent B over hundreds of paired matches (same scenarios and seeds, roles swapped) to tell whether one is significantly better.
 - **arena:** a tournament across a roster of agents, producing a leaderboard and ratings.
+- **reading:** the referee's interpretation of one message (offer, accept, reject or none, and the price), made once when the message arrives. Rules decide the clear cases; `reader: llm:<profile>` asks a model for the ambiguous ones, choosing only among amounts the message names. `shadow:rules+llm:<profile>` records the model's view without letting it decide. `regateo readings RUN_ID [--reread <reader>]` scores readings against what each agent meant to say.
 
 Model access goes through `regateo.llm`: the Claude API for real runs, or a local model served with vLLM behind an OpenAI-compatible endpoint (see `backend/.env.example`).
 

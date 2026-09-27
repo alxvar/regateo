@@ -42,6 +42,7 @@ def last(*texts: str):
       "$130 is over my budget. I'm prepared to go up to $125 as my final offer. If that works for you, "
       "we can close the deal right now."], ReadKind.OFFER, 125, True),     # "close the deal" is not accepting
     (["$150", "$140", "$140 per chair is acceptable to me."], ReadKind.ACCEPT, 140, False),
+    (["$150", "$140", "Great, $140 it is! Thanks for the fair deal."], ReadKind.ACCEPT, 140, False),
     (["$150", "$140", "$140 is not acceptable to me."], ReadKind.NONE, None, True),
     (["$120", "I can do $150; comparables range from $100 to $180."], ReadKind.OFFER, 150, True),
 ])

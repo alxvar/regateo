@@ -30,7 +30,7 @@ PRICE_TOLERANCE = 0.005   # absolute, after rounding to cents
 ACCEPT = re.compile(
     r"\b(?:deal|i accept|we accept|happy to accept|accepted|agreed|i agree|we agree|you've got a deal|"
     r"it's a deal|sold|let's do it|works for me|sounds good|we have a deal|deal's done|deal done|"
-    r"acceptable to me|is acceptable|you have a deal|you've got yourself a deal)\b",
+    r"acceptable to me|is acceptable|you have a deal|you've got yourself a deal|it is(?=\s*[.!]))",
     re.IGNORECASE,
 )
 # "deal" as a noun ("a fair deal for both", "close the deal today") is not an acceptance.

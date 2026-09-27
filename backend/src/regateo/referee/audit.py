@@ -16,7 +16,7 @@ from collections.abc import Iterable
 from pydantic import BaseModel, Field
 
 from regateo.core.messages import Message, Reading, ReadKind
-from regateo.referee.reader import same_price, with_readings
+from regateo.referee.reader import OfferReader, same_price, with_readings
 
 _INTENT_KIND = {"offer": ReadKind.OFFER, "accept": ReadKind.ACCEPT, "reject": ReadKind.REJECT,
                 "walk_away": ReadKind.REJECT, "message": ReadKind.NONE}
@@ -131,6 +131,16 @@ def audit_readings(run_id: str, matches: Iterable[MatchMessages], max_examples: 
                         match_id=mm.match_id, idx=m.idx, sender=m.sender.value,
                         agent=mm.seller if m.sender.value == "seller" else mm.buyer, text=m.text,
                         intent=intent, rules=_bare(r_rules.reading), with_model=_bare(model)))
+    return out
+
+
+async def reread(messages: list[Message], reader: OfferReader) -> list[Message]:
+    """The transcript read afresh by `reader`, as if it had refereed the match. Readings don't
+    change what the agents said, so a stored run is a fixed test set for trying readers."""
+    out: list[Message] = []
+    for m in messages:
+        out.append(m.model_copy(update={"reading": None}))
+        out[-1].reading = await reader.read(out)
     return out
 
 

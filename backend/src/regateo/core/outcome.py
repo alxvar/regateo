@@ -26,6 +26,7 @@ class Outcome(BaseModel):
     seller_share: float = 0.0                  # surplus share, see Scenario.surplus_share
     buyer_share: float = 0.0
     past_reservation: Role | None = None       # set if the deal broke this side's reservation
+    error_by: Role | None = None               # the side whose agent failed, for EndReason.ERROR
     detail: str = ""                           # error text, judge evidence, etc.
 
     def share(self, role: Role) -> float:

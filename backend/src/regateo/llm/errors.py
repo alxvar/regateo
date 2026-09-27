@@ -1,6 +1,8 @@
 """Provider-neutral errors. Callers catch these, never SDK exceptions."""
 from __future__ import annotations
 
+from regateo.core.agent import Abort
+
 
 class LLMError(Exception):
     def __init__(self, message: str, *, retryable: bool = False, status: int | None = None):
@@ -34,5 +36,6 @@ class LLMBadOutput(LLMError):
         self.text = text
 
 
-class BudgetExceeded(LLMError):
-    pass
+class BudgetExceeded(Abort):
+    """Not an LLMError on purpose: agents fall back on LLMError and keep playing, but a spent
+    budget must stop the match and the run."""

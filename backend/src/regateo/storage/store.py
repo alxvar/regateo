@@ -58,9 +58,10 @@ class Store:
         self._lock = asyncio.Lock()
 
     @classmethod
-    async def open(cls, path: str | Path | None = None) -> Store:
+    async def open(cls, path: str | Path | None = None, *, readonly: bool = False) -> Store:
+        """`readonly` is for reader processes (the API) while a run writes from another process."""
         path = Path(path) if path else data_dir() / "regateo.db"
-        conn = await asyncio.to_thread(_connect, path)
+        conn = await asyncio.to_thread(_connect, path, readonly)
         return cls(conn)
 
     async def close(self) -> None:
@@ -115,13 +116,35 @@ class Store:
         await self._run(q)
 
     async def finish_match(self, match_id: str, outcome: Outcome, *, cost_usd: float = 0.0,
-                           status: str = "done") -> None:
+                           status: str = "done", meta: dict[str, Any] | None = None) -> None:
+        """`meta` is merged into the match's meta (e.g. referee disagreements)."""
         def q(c: sqlite3.Connection) -> None:
+            if meta:
+                (raw,) = c.execute("SELECT meta FROM matches WHERE id = ?", (match_id,)).fetchone()
+                c.execute("UPDATE matches SET meta = ? WHERE id = ?",
+                          (json.dumps({**json.loads(raw or "{}"), **meta}, default=str), match_id))
             c.execute(
                 "UPDATE matches SET status=?, outcome=?, deal=?, price=?, seller_share=?, buyer_share=?,"
                 " end_reason=?, cost_usd=?, ended_at=? WHERE id=?",
                 (status, outcome.model_dump_json(), int(outcome.deal), outcome.price, outcome.seller_share,
                  outcome.buyer_share, outcome.end_reason.value, cost_usd, time.time(), match_id))
+            c.commit()
+        await self._run(q)
+
+    async def reset_match(self, match_id: str) -> None:
+        """Forget a partially played match so it can be replayed (resume after a crash)."""
+        def q(c: sqlite3.Connection) -> None:
+            c.execute("DELETE FROM messages WHERE match_id = ?", (match_id,))
+            c.execute("DELETE FROM llm_calls WHERE match_id = ?", (match_id,))
+            c.execute("DELETE FROM matches WHERE id = ?", (match_id,))
+            c.commit()
+        await self._run(q)
+
+    async def update_run_config(self, run_id: str, patch: dict[str, Any]) -> None:
+        def q(c: sqlite3.Connection) -> None:
+            (raw,) = c.execute("SELECT config FROM runs WHERE id = ?", (run_id,)).fetchone()
+            c.execute("UPDATE runs SET config = ? WHERE id = ?",
+                      (json.dumps({**json.loads(raw), **patch}, default=str), run_id))
             c.commit()
         await self._run(q)
 
@@ -169,6 +192,47 @@ class Store:
                         move=Move.model_validate_json(r["move"]), t=r["t"], latency_s=r["latency_s"])
                 for r in rows]
 
+    async def match_statuses(self, run_id: str) -> dict[str, str]:
+        rows = await self._run(lambda c: c.execute(
+            "SELECT id, status FROM matches WHERE run_id = ?", (run_id,)).fetchall())
+        return {r["id"]: r["status"] for r in rows}
+
+    async def messages_since(self, match_id: str, after_idx: int) -> list[Message]:
+        return [m for m in await self.match_messages(match_id) if m.idx > after_idx]
+
+    async def run_progress(self, run_id: str) -> dict[str, Any]:
+        def q(c: sqlite3.Connection) -> dict[str, Any]:
+            by_status = {r["status"]: r["n"] for r in c.execute(
+                "SELECT status, COUNT(*) AS n FROM matches WHERE run_id = ? GROUP BY status", (run_id,))}
+            agg = c.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0) AS cost, COALESCE(SUM(deal), 0) AS deals,"
+                " MAX(COALESCE(ended_at, started_at)) AS last FROM matches WHERE run_id = ?", (run_id,)).fetchone()
+            tokens = c.execute(
+                "SELECT COALESCE(SUM(l.input_tokens + l.cache_read_tokens + l.cache_write_tokens), 0) AS inp,"
+                " COALESCE(SUM(l.output_tokens), 0) AS out, COUNT(l.id) AS calls"
+                " FROM llm_calls l JOIN matches m ON m.id = l.match_id WHERE m.run_id = ?", (run_id,)).fetchone()
+            run = c.execute("SELECT status, config FROM runs WHERE id = ?", (run_id,)).fetchone()
+            total = json.loads(run["config"]).get("total_matches") if run else None
+            return {"status": run["status"] if run else None, "total": total, "by_status": by_status,
+                    "done": by_status.get("done", 0), "cost_usd": agg["cost"], "deals": agg["deals"],
+                    "last_update": agg["last"], "input_tokens": tokens["inp"], "output_tokens": tokens["out"],
+                    "llm_calls": tokens["calls"]}
+        return await self._run(q)
+
+    async def overview(self) -> dict[str, Any]:
+        def q(c: sqlite3.Connection) -> dict[str, Any]:
+            runs = {r["kind"]: r["n"] for r in c.execute("SELECT kind, COUNT(*) AS n FROM runs GROUP BY kind")}
+            m = c.execute("SELECT COUNT(*) AS n, COALESCE(SUM(deal), 0) AS deals, COALESCE(SUM(cost_usd), 0)"
+                          " AS cost FROM matches WHERE status = 'done'").fetchone()
+            t = c.execute("SELECT COUNT(*) AS calls, COALESCE(SUM(input_tokens + cache_read_tokens"
+                          " + cache_write_tokens), 0) AS inp, COALESCE(SUM(output_tokens), 0) AS out"
+                          " FROM llm_calls").fetchone()
+            running = c.execute("SELECT COUNT(*) FROM runs WHERE status = 'running'").fetchone()[0]
+            return {"runs": runs, "running_runs": running, "matches": m["n"], "deals": m["deals"],
+                    "cost_usd": m["cost"], "llm_calls": t["calls"], "input_tokens": t["inp"],
+                    "output_tokens": t["out"]}
+        return await self._run(q)
+
     async def match_llm_calls(self, match_id: str) -> list[LLMCallRecord]:
         rows = await self._run(lambda c: c.execute(
             "SELECT * FROM llm_calls WHERE match_id = ? ORDER BY id", (match_id,)).fetchall())
@@ -180,7 +244,11 @@ class Store:
         ) for r in rows]
 
 
-def _connect(path: Path) -> sqlite3.Connection:
+def _connect(path: Path, readonly: bool = False) -> sqlite3.Connection:
+    if readonly:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row

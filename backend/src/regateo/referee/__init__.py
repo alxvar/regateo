@@ -8,9 +8,10 @@ from regateo.referee.detect import (
     TextDetector,
 )
 from regateo.referee.prices import PriceMention, find_prices, stated_prices
+from regateo.referee.registry import build_detector
 from regateo.referee.scoring import score
 
 __all__ = [
-    "DealDetector", "DealEvent", "LLMJudgeDetector", "PriceMention", "ShadowDetector",
+    "DealDetector", "DealEvent", "build_detector", "LLMJudgeDetector", "PriceMention", "ShadowDetector",
     "StructuredDetector", "TextDetector", "find_prices", "score", "stated_prices",
 ]

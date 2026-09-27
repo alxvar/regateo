@@ -23,7 +23,7 @@ class CacheMode(StrEnum):
     READWRITE = "readwrite"  # replay hits, call and store on a miss
 
 
-def request_key(profile_name: str, req: LLMRequest, salt: str = "") -> str:
+def request_key(profile_name: str, req: LLMRequest, salt: str = "", salt_tags: tuple[str, ...] = ()) -> str:
     body = {
         "profile": profile_name,
         "system": req.system,
@@ -32,21 +32,24 @@ def request_key(profile_name: str, req: LLMRequest, salt: str = "") -> str:
         "effort": req.effort,
         "schema": req.output_schema.model_json_schema() if req.output_schema else None,
         "salt": salt,
+        "salt_tags": {t: req.tags.get(t) for t in salt_tags},
     }
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
 class CachedClient:
-    """`salt` separates otherwise identical requests that should sample independently,
-    e.g. the sample index when drawing several completions for one prompt."""
+    """`salt` separates otherwise identical requests that should sample independently, e.g. the
+    sample index. `salt_tags` does the same per request from its tags: with ("match", "role"), two
+    matches with the same prompt get independent samples, while re-running a match replays it."""
 
     def __init__(self, inner: LLMClient, path: str | Path, mode: CacheMode = CacheMode.READWRITE,
-                 salt: str = ""):
+                 salt: str = "", salt_tags: tuple[str, ...] = ()):
         self.inner = inner
         self.profile_name = inner.profile_name
         self.provider = inner.provider
         self.mode = mode
         self.salt = salt
+        self.salt_tags = salt_tags
         self._lock = threading.Lock()
         self._db = sqlite3.connect(str(path), check_same_thread=False)
         self._db.execute("PRAGMA journal_mode=WAL")
@@ -68,7 +71,7 @@ class CachedClient:
     async def complete(self, req: LLMRequest) -> LLMResponse:
         if self.mode is CacheMode.OFF:
             return await self.inner.complete(req)
-        key = request_key(self.profile_name, req, self.salt)
+        key = request_key(self.profile_name, req, self.salt, self.salt_tags)
         if self.mode in (CacheMode.READ, CacheMode.READWRITE) and (hit := self._get(key)):
             self.hits += 1
             resp = LLMResponse.model_validate({**json.loads(hit), "cached": True})

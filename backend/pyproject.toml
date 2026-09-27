@@ -5,10 +5,13 @@ description = "Negotiation agent, evaluation gym and tournament arena"
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=1.8.0",
+    "fastapi>=0.141.1",
     "openai>=3.19.2",
     "pydantic>=2.13.5",
     "python-dotenv>=1.2.3",
     "pyyaml>=6.0.3",
+    "typer>=0.27.2",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [build-system]
@@ -20,6 +23,7 @@ packages = ["src/regateo"]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.9",

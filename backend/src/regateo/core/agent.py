@@ -11,6 +11,11 @@ from regateo.core.messages import Message, Move
 from regateo.core.scenario import PrivateView
 
 
+class Abort(Exception):  # noqa: N818
+    """Raised from inside an agent to stop the whole match for a reason that isn't the agent's
+    fault (e.g. the run's budget is spent). The match engine re-raises it instead of scoring."""
+
+
 class Observation(BaseModel):
     """What an agent is given each turn."""
 

@@ -16,7 +16,7 @@ uv run regateo serve                      # API + UI on http://localhost:8000 (a
 cd ../ui && npm install && npm run build  # or `npm run dev` for hot reload on :5173
 ```
 
-LLM runs use model profiles in `backend/configs/models/`. For local Qwen, start vLLM with `backend/scripts/serve_qwen_vllm.sh`, then try `uv run regateo gym o2-vs-o1-duel`. Runs resume with `--resume <run_id>` and stop at `--budget <usd>`.
+LLM runs use model profiles in `backend/configs/models/`. For local Qwen (Qwen3.8-27B NVFP4 on the RTX 5090), install vLLM once in its own venv (`uv venv ~/venvs/vllm --python 3.12 && VIRTUAL_ENV=~/venvs/vllm uv pip install vllm --torch-backend=auto`), start it with `backend/scripts/serve_qwen_vllm.sh` (port 8001; the dashboard keeps 8000), then try `uv run regateo gym o2-vs-o1-duel`. Runs resume with `--resume <run_id>` and stop at `--budget <usd>`.
 
 ## Layout
 

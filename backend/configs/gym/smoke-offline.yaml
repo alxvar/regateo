@@ -1,0 +1,13 @@
+# No model calls: boulware vs a copy with a softer curve, against every scripted opponent.
+# Runs in seconds; use it to check the pipeline end to end.
+name: smoke-offline
+mode: benchmark
+a: boulware
+b: {kind: boulware, name: boulware-soft, params: {boulware: 1.5}}
+opponents: [scripted:linear, scripted:hardliner, scripted:pushover, scripted:liar, scripted:injector, scripted:staller]
+scenarios: {per_cell: 10, info_modes: [private, range_hint], max_rounds: [4, 8], deadline_known: [true, false]}
+protocol: freetext
+detector: text
+sim_clock: true
+seed: 1
+settings: {concurrency: 64}

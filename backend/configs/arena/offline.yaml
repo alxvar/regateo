@@ -1,0 +1,10 @@
+# No model calls: code-only roster, for checking the arena end to end.
+name: offline-arena
+roster: [boulware, scripted:linear, scripted:hardliner, scripted:pushover, scripted:staller]
+games_per_pair: 30
+scenarios: {per_cell: 30, max_rounds: [6], deadline_known: [false]}
+protocol: structured
+detector: structured
+sim_clock: true
+seed: 4
+settings: {concurrency: 64}

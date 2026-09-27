@@ -1,0 +1,3 @@
+kind: o1
+model: claude-opus-5
+params: {effort: medium}

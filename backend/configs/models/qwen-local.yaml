@@ -1,0 +1,13 @@
+# Local Qwen served by vLLM (scripts/serve_qwen_vllm.sh), through the OpenAI API.
+name: qwen-local
+provider: openai
+model: qwen-local                  # vLLM --served-model-name
+base_url: ${VLLM_BASE_URL:-http://localhost:8000/v1}
+max_tokens: 4096
+max_concurrency: 32                # keep <= vLLM --max-num-seqs
+timeout_s: 180
+max_retries: 1
+extra:
+  temperature: 0.7
+  extra_body:
+    chat_template_kwargs: {enable_thinking: false}   # set true to let Qwen reason before answering

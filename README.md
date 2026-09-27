@@ -4,7 +4,11 @@ A negotiation agent for a 1v1 agent-vs-agent price negotiation tournament. Agent
 
 ## Status
 
-We're designing a new system architecture in [`docs/`](docs/). The project skeleton exists; each package's `__init__.py` states its responsibility, but there is no logic yet.
+We're designing a new system architecture in [`docs/`](docs/). The bottom layers of the backend are implemented: `core`, `llm`, `protocol`, `referee` and `storage`. Agents, the match engine, the gym, the arena, the API and the UI are next.
+
+```bash
+cd backend && uv sync && uv run pytest        # unit tests; live model tests: uv run pytest -m live
+```
 
 ## Layout
 

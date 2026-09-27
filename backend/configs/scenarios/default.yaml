@@ -1,0 +1,11 @@
+# The idea-1 grid: every unknown rule as a knob (docs/01 §4). 3 x 2 x 2 cells x per_cell scenarios.
+currency: USD
+seller_reservation: [80, 130]
+zopa: [8, 60]
+market_margin: [15, 40]
+info_modes: [private, range_hint, full]
+max_rounds: [4, 8]
+deadline_known: [true, false]
+time_limit_s: [null]
+first_mover: random
+per_cell: 10

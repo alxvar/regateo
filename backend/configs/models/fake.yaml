@@ -1,0 +1,5 @@
+# Offline stand-in: no network, no cost. Answers "ok" unless a test scripts it.
+name: fake
+provider: fake
+model: fake
+max_concurrency: 1000

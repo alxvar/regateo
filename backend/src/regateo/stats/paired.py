@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import itertools
+import math
 import random
-from statistics import fmean
+from statistics import NormalDist, fmean
 
 from pydantic import BaseModel
 
 from regateo.stats.summary import mean_ci
 
 EXACT_MAX_N = 16      # 2^16 sign patterns: exact test is cheap below this
+NORMAL_MIN_N = 60     # from here, the sign-flip null is normal (CLT) and sampling it is wasted time
 
 
 class PairedResult(BaseModel):
@@ -40,6 +42,10 @@ def paired_test(diffs: list[float], *, n_perm: int = 10_000, n_boot: int = 2000,
             total += 1
             hits += abs(sum(s * d for s, d in zip(signs, diffs, strict=True)) / n) >= observed - eps
         p = hits / total
+    elif n >= NORMAL_MIN_N:
+        # Under H0 the sign-flipped sum has mean 0 and variance sum(d^2), and is close to normal.
+        scale = math.sqrt(sum(d * d for d in diffs))
+        p = 1.0 if scale == 0 else 2 * (1 - NormalDist().cdf(observed * n / scale))
     else:
         rng = random.Random(seed)
         hits = sum(abs(sum(d if rng.random() < 0.5 else -d for d in diffs) / n) >= observed - eps

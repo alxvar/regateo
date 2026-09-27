@@ -1,8 +1,14 @@
 # ui
 
-React + Vite + TypeScript dashboard (not scaffolded yet). It reads from the backend's API (`backend/src/regateo/api`) only.
+React + Vite + TypeScript dashboard over the backend's read-only API (`backend/src/regateo/api`).
 
-Planned views:
-- **Conversation viewer:** a match transcript, with decisions and referee verdicts per turn.
-- **Gym:** live sessions, and A/B reports with confidence intervals.
-- **Arena:** leaderboard, ratings and the per-pair results matrix.
+- **Runs:** totals and every gym, arena and match run, with live progress.
+- **Gym run:** the A − B verdict with its 95% CI and p-value, per-side stats, and a forest plot of where the difference comes from (by opponent, role or scenario cell).
+- **Arena run:** a Bradley-Terry leaderboard and the pairwise results heatmap.
+- **Match:** the price path against both walk-away prices, the conversation with agent internals, and model calls. It updates live while the match runs.
+
+```bash
+npm install
+npm run dev          # http://localhost:5173, proxies /api to `regateo serve` on :8000
+npm run build        # dist/ is then served by `regateo serve` itself on :8000
+```

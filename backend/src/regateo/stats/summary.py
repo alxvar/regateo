@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 import random
-from statistics import NormalDist, fmean
+from statistics import NormalDist, fmean, stdev
 
 from pydantic import BaseModel
 
@@ -16,14 +16,20 @@ class Estimate(BaseModel):
     n: int
 
 
+LARGE_N = 60      # from here, closed-form intervals match resampling and are ~1000x faster
+
+
 def mean_ci(xs: list[float], *, level: float = 0.95, n_boot: int = 2000, seed: int = 0) -> Estimate:
-    """Mean with a bootstrap percentile interval. Deterministic for a given seed."""
+    """Mean with a bootstrap percentile interval (normal interval for large n). Deterministic for a seed."""
     n = len(xs)
     if n == 0:
         return Estimate(mean=None, lo=None, hi=None, n=0)
     m = fmean(xs)
     if n == 1:
         return Estimate(mean=m, lo=m, hi=m, n=1)
+    if n >= LARGE_N:
+        half = NormalDist().inv_cdf(1 - (1 - level) / 2) * stdev(xs) / math.sqrt(n)
+        return Estimate(mean=m, lo=m - half, hi=m + half, n=n)
     rng = random.Random(seed)
     boots = sorted(fmean(rng.choices(xs, k=n)) for _ in range(n_boot))
     alpha = (1 - level) / 2

@@ -34,7 +34,7 @@ def intent_of(m: Message) -> Intent | None:
         d = meta.get(key)
         if isinstance(d, dict) and d.get("action") in _INTENT_KIND:
             kind = _INTENT_KIND[d["action"]]
-            price = d.get("price") if kind in (ReadKind.OFFER, ReadKind.ACCEPT) else None
+            price = d.get("price") if kind is not ReadKind.NONE else None
             return Intent(kind=kind, price=float(price) if price is not None else None)
     if m.move.action is not None and m.move.action.value in _INTENT_KIND:   # structured platforms
         return Intent(kind=_INTENT_KIND[m.move.action.value], price=m.move.price)
@@ -42,6 +42,12 @@ def intent_of(m: Message) -> Intent | None:
 
 
 def agrees(r: Reading, intent: Intent) -> bool:
+    if intent.kind is ReadKind.REJECT:
+        # LLM agents "reject" both silently and with a counter-price; either reading is right.
+        if r.kind in (ReadKind.REJECT, ReadKind.NONE):
+            return True
+        return (r.kind is ReadKind.OFFER and intent.price is not None and r.price is not None
+                and same_price(r.price, intent.price))
     if r.kind is not intent.kind:
         return False
     if intent.price is None:

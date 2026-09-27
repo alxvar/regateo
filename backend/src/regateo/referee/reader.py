@@ -28,14 +28,19 @@ from regateo.referee.prices import find_prices
 PRICE_TOLERANCE = 0.005   # absolute, after rounding to cents
 
 ACCEPT = re.compile(
-    r"\b(?:deal|i accept|we accept|accepted|agreed|i agree|we agree|you've got a deal|it's a deal|"
-    r"sold|let's do it|works for me|sounds good|we have a deal|done)\b",
+    r"\b(?:deal|i accept|we accept|happy to accept|accepted|agreed|i agree|we agree|you've got a deal|"
+    r"it's a deal|sold|let's do it|works for me|sounds good|we have a deal|deal's done|deal done|"
+    r"acceptable to me|is acceptable|you have a deal|you've got yourself a deal)\b",
     re.IGNORECASE,
 )
+# "deal" as a noun ("a fair deal for both", "close the deal today") is not an acceptance.
+_NEUTRAL_DEAL = re.compile(r"\b(?:the|a|fair|good|great|reasonable|close|closing|seal|make|making)\s+deal\b",
+                           re.IGNORECASE)
 NOT_ACCEPT = re.compile(
     r"\b(?:no deal|not a deal|not accept|can't accept|cannot accept|won't accept|don't accept|"
     r"not agree|don't agree|can't agree|cannot agree|not done|deal\?|if you|would you|could you|"
-    r"how about|what about|counter)\b",
+    r"how about|what about|counter|if (?:that|this|it) works|not acceptable|isn't acceptable|"
+    r"is not acceptable)\b",
     re.IGNORECASE,
 )
 _RANGE = re.compile(r"[$€£]\s?\d[\d,.]*k?\s*(?:-|–|—|to)\s*[$€£]?\s?\d|\d[\d,.]*k?\s*(?:-|–|—|to)\s*[$€£]\s?\d"
@@ -45,6 +50,10 @@ _PRICE_IN_WORDS = re.compile(
     r"split the difference|meet (?:you )?in the middle)\b",
     re.IGNORECASE,
 )
+
+
+def is_acceptance(text: str) -> bool:
+    return bool(ACCEPT.search(_NEUTRAL_DEAL.sub(" ", text))) and not NOT_ACCEPT.search(text)
 
 
 def same_price(a: float, b: float) -> bool:
@@ -82,7 +91,8 @@ _QUOTE_WINDOW = 2   # the other side's messages whose amounts count as quotes wh
 _OFFER_CUE = re.compile(
     r"\b(?:i can do|i could do|i can go|how about|what about|would you take|would .{0,20}work|my price|"
     r"my offer|i'll (?:do|take|go|pay|sell)|i will (?:do|take|go|pay|sell)|i'd (?:do|take|go|pay|sell)|"
-    r"let's say|meet (?:you )?at|final offer|offering|i'm at|i am at)\b",
+    r"let's say|meet (?:you )?at|final offer|offering|i'm at|i am at|go up to|go down to|come down to|"
+    r"come up to|stretch to|move to|maximum is|minimum is|best i can do)\b",
     re.IGNORECASE,
 )
 
@@ -99,25 +109,36 @@ def rule_reading(m: Message, earlier: Sequence[Message]) -> Reading:
     for v in [p.value for p in mentions if p.currency] or [p.value for p in mentions]:
         if not _has(named, v):
             named.append(v)
+    ranges = [r.span() for r in _RANGE.finditer(m.text)]
+    in_range = [p.value for p in mentions if any(a <= p.start < b for a, b in ranges)]
     recent = [e for e in earlier if e.sender is them][-_QUOTE_WINDOW:]
     theirs = [p.value for e in recent for p in find_prices(e.text)]
     mine = [p.value for e in earlier if e.sender is m.sender for p in find_prices(e.text)]
     own = [p for p in named if not _has(theirs, p)]        # not quoting the other side
     fresh = [p for p in own if not _has(mine, p)]         # not repeating ourselves either
+    their_offers = [e.reading.price for e in earlier if e.sender is them and e.reading
+                    and e.reading.kind is ReadKind.OFFER and e.reading.price is not None]
     options = offer_options(earlier, them)
 
     def reading(kind: ReadKind, price: float | None = None, ambiguous: bool = False, note: str = "") -> Reading:
         return Reading(kind=kind, price=price, ambiguous=ambiguous, note=note, candidates=named)
 
-    if ACCEPT.search(m.text) and not NOT_ACCEPT.search(m.text):
+    if is_acceptance(m.text):
         if not named:
             return reading(ReadKind.ACCEPT, standing, ambiguous=standing is None,
                            note="" if standing is not None else "accepts, but their price is unclear")
+        if fresh:
+            # Acceptance words next to a new amount of our own: a counter ("that's a good deal
+            # for you: $140"), not an acceptance.
+            return reading(ReadKind.OFFER, fresh[-1] if len(fresh) == 1 else None, ambiguous=True,
+                           note="agreement words, but names a new price")
         if standing is not None and _has(named, standing):
             return reading(ReadKind.ACCEPT, standing, ambiguous=bool(own),
                            note="also names other amounts" if len(named) > 1 else "")
         if standing is None and len(named) == 1 and _has(options, named[0]):
             return reading(ReadKind.ACCEPT, named[0], ambiguous=True, note="accepts one of the amounts they named")
+        if len(named) == 1 and _has(their_offers, named[0]):
+            return reading(ReadKind.ACCEPT, named[0], ambiguous=True, note="accepts an earlier offer of theirs")
         if own:
             # "Great, we agree at $90!" when they never offered $90: a claim, i.e. an offer at $90.
             return reading(ReadKind.OFFER, own[-1] if len(own) == 1 else None, ambiguous=True,
@@ -126,15 +147,18 @@ def rule_reading(m: Message, earlier: Sequence[Message]) -> Reading:
     if not named:
         vague = bool(_PRICE_IN_WORDS.search(m.text))
         return reading(ReadKind.NONE, ambiguous=vague, note="price in words" if vague else "")
-    if _RANGE.search(m.text):
+    if ranges:
+        outside = [p for p in fresh if not _has(in_range, p)]
+        if len(outside) == 1:
+            return reading(ReadKind.OFFER, outside[0], ambiguous=True, note="names a range and one other price")
         return reading(ReadKind.OFFER, ambiguous=True, note="names a range")
     if len(fresh) == 1:
         return reading(ReadKind.OFFER, fresh[0])
     if not fresh and len(own) == 1:
         return reading(ReadKind.OFFER, own[0])                # restating our own offer
     if not own:
-        if len(named) == 1 and _OFFER_CUE.search(m.text):
-            return reading(ReadKind.OFFER, named[0], ambiguous=True, note="offers a price they named")
+        if _OFFER_CUE.search(m.text):
+            return reading(ReadKind.OFFER, named[-1], ambiguous=True, note="offers a price they named")
         return reading(ReadKind.NONE, ambiguous=True, note="only restates their price")
     return reading(ReadKind.OFFER, ambiguous=True, note="several new amounts")
 

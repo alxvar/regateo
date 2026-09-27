@@ -41,7 +41,7 @@ export interface Reading {
 }
 export interface Message {
   idx: number; sender: Role; text: string; move: Move; t: number; latency_s: number;
-  reading: Reading;
+  reading: Reading | null;   // null only from an API older than the reader
   offer: number | null;   // the price this message offers or accepts, per the reading
 }
 

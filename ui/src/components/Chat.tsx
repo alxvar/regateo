@@ -43,11 +43,13 @@ export function Chat({ messages, names, currency, closingIdx }: {
                 <strong>{m.sender}</strong>
                 <span className="muted">{names[m.sender]}</span>
                 <span className="muted">#{m.idx + 1}</span>
-                <span className="chip" title={m.reading.note || `read by ${m.reading.source}`}>
-                  {describe(m.reading, currency)}
-                  {m.reading.source === "llm" ? " · model" : m.reading.ambiguous ? " · unclear" : ""}
-                </span>
-                {m.reading.shadow && (
+                {m.reading && (
+                  <span className="chip" title={m.reading.note || `read by ${m.reading.source}`}>
+                    {describe(m.reading, currency)}
+                    {m.reading.source === "llm" ? " · model" : m.reading.ambiguous ? " · unclear" : ""}
+                  </span>
+                )}
+                {m.reading?.shadow && (
                   <span className="chip" title="shadow reader (log only)">
                     model reads {describe(m.reading.shadow, currency)}
                   </span>

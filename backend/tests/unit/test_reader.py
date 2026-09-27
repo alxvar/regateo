@@ -37,6 +37,13 @@ def last(*texts: str):
     (["$120?", "I paid $200; I'd sell at $150.", "$160?", "$155.", "$130?", "$150 then."],
      ReadKind.OFFER, 150, False),                                        # $200/$150 are old: quotes are recent
     (["$150", "$170", "How about $160, deal?"], ReadKind.OFFER, 160, False),
+    # From Qwen transcripts:
+    (["$78", "$125.", "$120?", "I can meet you at $130.",
+      "$130 is over my budget. I'm prepared to go up to $125 as my final offer. If that works for you, "
+      "we can close the deal right now."], ReadKind.OFFER, 125, True),     # "close the deal" is not accepting
+    (["$150", "$140", "$140 per chair is acceptable to me."], ReadKind.ACCEPT, 140, False),
+    (["$150", "$140", "$140 is not acceptable to me."], ReadKind.NONE, None, True),
+    (["$120", "I can do $150; comparables range from $100 to $180."], ReadKind.OFFER, 150, True),
 ])
 def test_rule_reading(texts, kind, price, ambiguous):
     r = last(*texts)

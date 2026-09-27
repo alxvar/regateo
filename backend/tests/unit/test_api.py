@@ -31,6 +31,7 @@ def test_endpoints(db, tmp_path):
         assert len(matches) == 12 and matches[0]["end_reason"]
         detail = client.get(f"/api/matches/{matches[0]['id']}").json()
         assert detail["messages"] and detail["match"]["scenario"]["seller_reservation"]
+        assert all("offer" in m for m in detail["messages"])
         stream = client.get(f"/api/matches/{matches[0]['id']}/stream").text
         assert stream.count("event: message") == len(detail["messages"]) and "event: end" in stream
         assert "event: end" in client.get(f"/api/runs/{run_id}/stream").text

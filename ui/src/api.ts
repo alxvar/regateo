@@ -34,7 +34,10 @@ export interface MatchSummary {
 }
 
 export interface Move { text: string; action: ActionKind | null; price: number | null; meta: Record<string, unknown> }
-export interface Message { idx: number; sender: Role; text: string; move: Move; t: number; latency_s: number }
+export interface Message {
+  idx: number; sender: Role; text: string; move: Move; t: number; latency_s: number;
+  offer: number | null;   // the price this message puts forward, as the referee reads it (server-side)
+}
 
 export interface Scenario {
   id: string; item: string; currency: string; seller_reservation: number; buyer_reservation: number;

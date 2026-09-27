@@ -1,14 +1,13 @@
 import type { Message } from "../api";
 import { money } from "../format";
 
-const PRICE = /(?:[$€£]|USD|EUR|GBP)\s?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)/i;
+/** The price a message puts forward. Extracted by the backend (referee.prices.offer_path). */
+export const priceOf = (m: Message): number | null => m.offer;
 
-/** The price a message carries: the structured field, else the first currency amount in the text. */
-export function priceOf(m: Message): number | null {
-  if (m.move.price != null && m.move.action !== "accept") return m.move.price;
-  if (m.move.action === "accept") return null;
-  const hit = PRICE.exec(m.text);
-  return hit ? Number(hit[1].replace(/,/g, "")) : null;
+/** The price the agent meant, when its internals record a decision (LLM agents). */
+function intendedPrice(m: Message): number | null {
+  const d = (m.move.meta ?? {}).decision as { price?: number | null } | undefined;
+  return typeof d?.price === "number" ? d.price : null;
 }
 
 export function Chat({ messages, names, currency, closingIdx }: {
@@ -24,6 +23,10 @@ export function Chat({ messages, names, currency, closingIdx }: {
           meta.fallback ? "fallback" : null,
           meta.repaired ? "veto: repaired" : Array.isArray(meta.vetoes) && meta.vetoes.length ? "veto: retried" : null,
         ].filter(Boolean) as string[];
+        const intended = intendedPrice(m);
+        if (intended != null && m.offer != null && Math.abs(intended - m.offer) > 0.005) {
+          flags.push(`reads as ${money(m.offer, currency)}, meant ${money(intended, currency)}`);
+        }
         return (
           <div key={m.idx} className={`bubble-row ${m.sender}`}>
             <div className={`bubble ${m.sender}${m.idx === closingIdx ? " closing" : ""}`}>

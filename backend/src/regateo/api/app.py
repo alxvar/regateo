@@ -18,7 +18,9 @@ from fastapi.staticfiles import StaticFiles
 
 from regateo.arena.report import build_arena_report
 from regateo.core.config import REPO_DIR
+from regateo.core.messages import Message
 from regateo.gym.report import build_gym_report
+from regateo.referee.prices import offer_path
 from regateo.storage.store import Store
 
 POLL_S = 1.0
@@ -81,7 +83,7 @@ def create_app(db_path: str | Path, *, ui_dir: Path | None = None, poll_s: float
         row = await s.get_match(match_id)
         if row is None:
             raise HTTPException(404, f"no match {match_id}")
-        return {"match": row.model_dump(), "messages": [m.model_dump() for m in await s.match_messages(match_id)],
+        return {"match": row.model_dump(), "messages": _with_offers(await s.match_messages(match_id)),
                 "llm_calls": [c.model_dump() for c in await s.match_llm_calls(match_id)]}
 
     @app.get("/api/matches/{match_id}/stream")
@@ -91,9 +93,12 @@ def create_app(db_path: str | Path, *, ui_dir: Path | None = None, poll_s: float
         async def events() -> AsyncIterator[str]:
             last = after
             while not await request.is_disconnected():
-                for m in await s.messages_since(match_id, last):
-                    last = m.idx
-                    yield _sse("message", m.model_dump_json())
+                if await s.messages_since(match_id, last):
+                    # Offers are read against earlier messages, so annotate the whole transcript.
+                    for m in _with_offers(await s.match_messages(match_id)):
+                        if m["idx"] > last:
+                            last = m["idx"]
+                            yield _sse("message", json.dumps(m))
                 row = await s.get_match(match_id)
                 if row is None or row.status != "running":
                     yield _sse("end", row.model_dump_json() if row else "null")
@@ -145,3 +150,8 @@ def _match_summary(r: Any) -> dict[str, Any]:
         "past_reservation": o.past_reservation.value if o and o.past_reservation else None,
         "cost_usd": r.cost_usd, "started_at": r.started_at, "ended_at": r.ended_at,
     }
+
+
+def _with_offers(messages: list[Message]) -> list[dict[str, Any]]:
+    """Messages as JSON, each with `offer`: the price it puts forward, as the referee reads it."""
+    return [m.model_dump(mode="json") | {"offer": p} for m, p in zip(messages, offer_path(messages), strict=True)]

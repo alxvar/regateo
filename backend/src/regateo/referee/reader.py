@@ -34,13 +34,16 @@ ACCEPT = re.compile(
     re.IGNORECASE,
 )
 # "deal" as a noun ("a fair deal for both", "close the deal today") is not an acceptance.
-_NEUTRAL_DEAL = re.compile(r"\b(?:the|a|fair|good|great|reasonable|close|closing|seal|make|making)\s+deal\b",
+_NEUTRAL_DEAL = re.compile(r"\b(?:the|a|this|that|fair|good|great|reasonable|close|closing|seal|make|making)\s+deal\b",
                            re.IGNORECASE)
 NOT_ACCEPT = re.compile(
-    r"\b(?:no deal|not a deal|not accept|can't accept|cannot accept|won't accept|don't accept|"
-    r"not agree|don't agree|can't agree|cannot agree|not done|deal\?|if you|would you|could you|"
-    r"how about|what about|counter|if (?:that|this|it) works|not acceptable|isn't acceptable|"
-    r"is not acceptable)\b",
+    r"\b(?:no deal|not a deal|deal\?|deal is off|if you|would you|could you|how about|what about|counter|"
+    r"if (?:that|this|it) works|misunderstanding|pass on|walk away|walking away|"
+    r"end(?:ing)? (?:this|the) negotiation|disregard)\b"
+    # a negation shortly before an agreement verb: "have not accepted", "can't close this deal at",
+    # "never agreed to", "not quite where I can close", "isn't acceptable"
+    r"|\b(?:not|never|cannot|unable to|\w+n't)\s+(?:\w+\s+){0,4}?"
+    r"(?:accept|agree|close|sell|proceed|finali[sz]e|acceptable)\w*",
     re.IGNORECASE,
 )
 _RANGE = re.compile(r"[$€£]\s?\d[\d,.]*k?\s*(?:-|–|—|to)\s*[$€£]?\s?\d|\d[\d,.]*k?\s*(?:-|–|—|to)\s*[$€£]\s?\d"
@@ -93,6 +96,16 @@ _OFFER_CUE = re.compile(
     r"my offer|i'll (?:do|take|go|pay|sell)|i will (?:do|take|go|pay|sell)|i'd (?:do|take|go|pay|sell)|"
     r"let's say|meet (?:you )?at|final offer|offering|i'm at|i am at|go up to|go down to|come down to|"
     r"come up to|stretch to|move to|maximum is|minimum is|best i can do)\b",
+    re.IGNORECASE,
+)
+
+
+# Refusing a price rather than offering it: "I'm not ready to meet at that level", "$175 is above
+# what I can justify", "too high for me".
+_REFUSAL = re.compile(
+    r"\b(?:not|never|cannot|unable to|\w+n't)\s+(?:\w+\s+){0,4}?(?:meet|go|do|pay|afford|justify|sell|take)\b"
+    r"|\b(?:above|below|beyond|over|under) (?:what i can|my budget|my limit|my minimum|my maximum)"
+    r"|\btoo (?:high|low|steep|much)\b",
     re.IGNORECASE,
 )
 
@@ -157,7 +170,8 @@ def rule_reading(m: Message, earlier: Sequence[Message]) -> Reading:
     if not fresh and len(own) == 1:
         return reading(ReadKind.OFFER, own[0])                # restating our own offer
     if not own:
-        if _OFFER_CUE.search(m.text):
+        # A refusal of their one price is not an offer of it; with two amounts, it refuses one and offers the other.
+        if _OFFER_CUE.search(m.text) and (len(named) > 1 or not _REFUSAL.search(m.text)):
             return reading(ReadKind.OFFER, named[-1], ambiguous=True, note="offers a price they named")
         return reading(ReadKind.NONE, ambiguous=True, note="only restates their price")
     return reading(ReadKind.OFFER, ambiguous=True, note="several new amounts")

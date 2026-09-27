@@ -34,6 +34,8 @@ def last(*texts: str):
     (["$150", "$170", "OK, deal."], ReadKind.ACCEPT, 170, False),
     (["$150", "$170", "Great, we agree at $160!"], ReadKind.OFFER, 160, True),             # a claim = an offer
     (["$120?", "$129.", "How about $129?"], ReadKind.OFFER, 129, True),                    # offers their number
+    (["$120?", "My offer stands at $175.",
+      "$175 is well above what I can justify. I'm not ready to meet at that level."], ReadKind.NONE, None, True),
     (["$120?", "I paid $200; I'd sell at $150.", "$160?", "$155.", "$130?", "$150 then."],
      ReadKind.OFFER, 150, False),                                        # $200/$150 are old: quotes are recent
     (["$150", "$170", "How about $160, deal?"], ReadKind.OFFER, 160, False),
@@ -44,6 +46,10 @@ def last(*texts: str):
     (["$150", "$140", "$140 per chair is acceptable to me."], ReadKind.ACCEPT, 140, False),
     (["$150", "$140", "Great, $140 it is! Thanks for the fair deal."], ReadKind.ACCEPT, 140, False),
     (["$150", "$140", "$140 is not acceptable to me."], ReadKind.NONE, None, True),
+    (["$150", "$140", "I have not accepted $140. That price is below my minimum."], ReadKind.NONE, None, False),
+    (["$150", "$140", "Deal is off. I will not sell at $140."], ReadKind.NONE, None, False),
+    (["$150", "$140", "I'm sorry, but I cannot close this deal at $140."], ReadKind.NONE, None, False),
+    (["$150", "$140", "$140 is beyond my budget. I'll have to pass on this deal."], ReadKind.NONE, None, True),
     (["$120", "I can do $150; comparables range from $100 to $180."], ReadKind.OFFER, 150, True),
 ])
 def test_rule_reading(texts, kind, price, ambiguous):

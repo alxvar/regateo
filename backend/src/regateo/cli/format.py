@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from regateo.arena.report import ArenaReport
-from regateo.core.messages import Message
+from regateo.core.messages import Message, Reading
 from regateo.core.outcome import Outcome
 from regateo.gym.report import Breakdown, GymReport
+from regateo.referee.audit import Group, ReadingAudit
 from regateo.stats import Estimate, PairedResult
 
 
@@ -71,3 +72,31 @@ def transcript(messages: list[Message], outcome: Outcome | None) -> str:
         lines.append(f"\n{outcome.end_reason.value}: {res}  seller share {outcome.seller_share:.3f}  "
                      f"buyer share {outcome.buyer_share:.3f}{'  ' + outcome.detail if outcome.detail else ''}")
     return "\n".join(lines)
+
+
+def _rate(g: Group, which: str) -> str:
+    r = getattr(g, which).rate
+    return "-" if r is None else f"{100 * r:5.1f}%"
+
+
+def _reading(r: Reading) -> str:
+    price = "?" if r.price is None else f"{r.price:g}"
+    return f"{r.kind.value} {price if r.kind.value in ('offer', 'accept') else ''}".strip() + f" ({r.source})"
+
+
+def reading_audit(a: ReadingAudit) -> str:
+    out = [f"Readings for {a.run_id}: {a.messages} messages, {a.labelled} scored against recorded intent"
+           f" ({a.unstated} more meant a price they didn't write)\n",
+           f"  {'':10} {'n':>6} {'rules':>8} {'rules+model':>12} {'model calls':>12}"]
+    for name, g in (("clear", a.clear), ("ambiguous", a.ambiguous)):
+        out.append(f"  {name:10} {g.rules.n:>6} {_rate(g, 'rules'):>8} {_rate(g, 'with_model'):>12}"
+                   f" {g.model_calls:>12}")
+    if a.mismatches:
+        out.append(f"\nMismatches ({a.mismatches_total}; showing {len(a.mismatches)}):")
+        for m in a.mismatches:
+            intent = f"{m.intent.kind.value} {'' if m.intent.price is None else f'{m.intent.price:g}'}".strip()
+            note = f"  [{m.rules.note}]" if m.rules.note else ""
+            out.append(f"  {m.match_id} #{m.idx} {m.sender} ({m.agent}): {m.text[:160]!r}")
+            out.append(f"      meant {intent} | rules: {_reading(m.rules)}{note}"
+                       f" | with model: {_reading(m.with_model)}")
+    return "\n".join(out)

@@ -16,6 +16,7 @@ from regateo.cli import format as fmt
 from regateo.core.config import configs_dir, data_dir, load_env, load_yaml
 from regateo.core.scenario import ScenarioSpec, sample_scenarios
 from regateo.gym import GymSpec, build_gym_report, run_gym
+from regateo.referee.audit import MatchMessages, audit_readings
 from regateo.runner import MatchJob, RunSettings, RunSummary, match_id, run_jobs
 from regateo.storage import Store
 
@@ -58,6 +59,7 @@ def match(
     deadline_known: bool = True,
     protocol: str = "structured",
     detector: str = "structured",
+    reader: Annotated[str, typer.Option(help="rules, llm:<profile>, or shadow:rules+llm:<profile>")] = "rules",
     sim_clock: Annotated[bool, typer.Option(help="simulated latency (code-only agents)")] = False,
     db: DbOpt = None,
 ) -> None:
@@ -69,12 +71,12 @@ def match(
     scenario = sample_scenarios(ScenarioSpec(per_cell=1, max_rounds=[max_rounds], deadline_known=[deadline_known]),
                                 scenario_seed)[0]
     job = MatchJob(key="0", scenario=scenario, seller=spec(seller), buyer=spec(buyer), protocol=protocol,
-                   detector=detector, seed=scenario_seed, sim_clock=sim_clock)
+                   detector=detector, reader=reader, seed=scenario_seed, sim_clock=sim_clock)
 
     async def go() -> None:
         store = await Store.open(_db(db))
         run_id = await store.create_run("match", f"{job.seller.label} vs {job.buyer.label}", {
-            "scenario_seed": scenario_seed, "protocol": protocol, "detector": detector})
+            "scenario_seed": scenario_seed, "protocol": protocol, "detector": detector, "reader": reader})
         summary = await run_jobs([job], store=store, run_id=run_id, settings=RunSettings(concurrency=1))
         await store.finish_run(run_id, "done" if summary.done else "failed")
         mid = match_id(run_id, job)
@@ -151,6 +153,26 @@ def report(run_id: str, db: DbOpt = None) -> None:
             for row in await store.list_matches(run_id):
                 typer.echo(fmt.transcript(await store.match_messages(row.id), row.outcome))
         await store.close()
+
+    asyncio.run(go())
+
+
+@app.command()
+def readings(
+    run_id: str,
+    examples: Annotated[int, typer.Option(help="mismatches to print")] = 20,
+    db: DbOpt = None,
+) -> None:
+    """How well the referee read a run's messages, checked against what each agent meant."""
+    async def go() -> None:
+        store = await Store.open(_db(db), readonly=True)
+        if await store.get_run(run_id) is None:
+            raise typer.BadParameter(f"no run {run_id}")
+        matches = [MatchMessages(match_id=row.id, seller=row.seller.name, buyer=row.buyer.name,
+                                 messages=await store.match_messages(row.id))
+                   for row in await store.list_matches(run_id)]
+        await store.close()
+        typer.echo(fmt.reading_audit(audit_readings(run_id, matches, max_examples=examples)))
 
     asyncio.run(go())
 

@@ -24,7 +24,7 @@ from regateo.match.clock import RealClock, SimClock
 from regateo.match.engine import run_match
 from regateo.protocol.registry import get_protocol
 from regateo.referee.detect import ShadowDetector
-from regateo.referee.registry import build_detector
+from regateo.referee.registry import build_detector, build_reader
 from regateo.storage.store import Store
 
 log = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ class MatchJob(BaseModel):
     buyer: AgentSpec
     protocol: str = "structured"
     detector: str = "structured"
+    reader: str = "rules"                      # how messages are read (referee.registry.build_reader)
     seed: int = 0
     sim_clock: bool = False                    # simulated latency instead of wall-clock time
     meta: dict[str, Any] = Field(default_factory=dict)
@@ -153,6 +154,7 @@ async def _play(job: MatchJob, store: Store, run_id: str, clients: _Clients, met
         agents[role] = build_agent(spec, scenario.view_for(role), ctx)
     referee_llm = clients.for_match(mid, "referee", "referee")
     detector = build_detector(job.detector, lambda profile: referee_llm(profile, "referee"))
+    reader = build_reader(job.reader, lambda profile: referee_llm(profile, "reader"))
 
     await store.start_match(scenario=scenario, seller=job.seller.ref(), buyer=job.buyer.ref(),
                             protocol=job.protocol, run_id=run_id, seed=job.seed, meta=job.meta, match_id=mid)
@@ -161,7 +163,7 @@ async def _play(job: MatchJob, store: Store, run_id: str, clients: _Clients, met
             scenario, agents[Role.SELLER], agents[Role.BUYER],
             protocol=protocol, detector=detector, rng=random.Random(derive_seed(job.seed, "match")),
             clock=SimClock(seed=derive_seed(job.seed, "clock")) if job.sim_clock else RealClock(),
-            store=store, match_id=mid,
+            store=store, match_id=mid, reader=reader,
         )
     except Abort as e:
         await store.finish_match(mid, Outcome(deal=False, end_reason=EndReason.ERROR, detail=f"aborted: {e}"),

@@ -15,6 +15,7 @@ from regateo.core.scenario import Scenario
 from regateo.match.clock import Clock, RealClock
 from regateo.protocol.base import TurnProtocol
 from regateo.referee.detect import DealDetector, DealEvent
+from regateo.referee.reader import OfferReader, RuleReader
 from regateo.referee.scoring import score
 from regateo.storage.store import Store
 
@@ -38,12 +39,16 @@ async def run_match(
     store: Store | None = None,
     match_id: str | None = None,
     on_message: OnMessage | None = None,
+    reader: OfferReader | None = None,
 ) -> MatchResult:
     """Alternate turns until a deal, a walk-away, an error, or the round or time budget runs out.
 
-    Messages go to `store` (if given) as they happen, so live views can follow the match.
+    Each message is read once by `reader` (rules by default) and stored with its reading, which
+    the detector then uses. Messages go to `store` (if given) as they happen, so live views can
+    follow the match.
     """
     clock = clock or RealClock()
+    reader = reader or RuleReader()
     rules = scenario.rules
     agents = {Role.SELLER: seller, Role.BUYER: buyer}
     views = {r: scenario.view_for(r) for r in Role}
@@ -85,6 +90,7 @@ async def run_match(
         move = protocol.normalise(move, rules)
         message = Message(idx=idx, sender=role, text=move.text, move=move, t=now, latency_s=now - start)
         transcript.append(message)
+        message.reading = await reader.read(transcript.messages)
         if store and match_id:
             await store.append_message(match_id, message)
         if on_message:

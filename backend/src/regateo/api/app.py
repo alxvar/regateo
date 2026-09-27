@@ -18,9 +18,9 @@ from fastapi.staticfiles import StaticFiles
 
 from regateo.arena.report import build_arena_report
 from regateo.core.config import REPO_DIR
-from regateo.core.messages import Message
+from regateo.core.messages import Message, ReadKind
 from regateo.gym.report import build_gym_report
-from regateo.referee.prices import offer_path
+from regateo.referee.reader import with_readings
 from regateo.storage.store import Store
 
 POLL_S = 1.0
@@ -153,5 +153,11 @@ def _match_summary(r: Any) -> dict[str, Any]:
 
 
 def _with_offers(messages: list[Message]) -> list[dict[str, Any]]:
-    """Messages as JSON, each with `offer`: the price it puts forward, as the referee reads it."""
-    return [m.model_dump(mode="json") | {"offer": p} for m, p in zip(messages, offer_path(messages), strict=True)]
+    """Messages as JSON with the referee's `reading` (rules fill in where none was stored) and
+    `offer`: the price the message offers or accepts, for charts."""
+    out = []
+    for m in with_readings(messages):
+        r = m.reading
+        offer = r.price if r and r.kind in (ReadKind.OFFER, ReadKind.ACCEPT) else None
+        out.append(m.model_dump(mode="json") | {"offer": offer})
+    return out

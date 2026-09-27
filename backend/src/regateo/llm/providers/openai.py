@@ -58,6 +58,8 @@ class OpenAIProvider:
                                 "schema": req.output_schema.model_json_schema()},
             }
         kwargs.update(p.extra)                # e.g. temperature, extra_body for vLLM options
+        if req.temperature is not None:
+            kwargs["temperature"] = req.temperature
         return kwargs
 
     async def complete(self, req: LLMRequest) -> LLMResponse:

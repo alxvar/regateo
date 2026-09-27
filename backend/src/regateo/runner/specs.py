@@ -29,6 +29,7 @@ class ExperimentSpec(BaseModel):
     scenarios: ScenarioSpec = Field(default_factory=ScenarioSpec)
     protocol: str = "structured"
     detector: str = "structured"
+    reader: str = "rules"                   # rules | llm:<profile> | shadow:rules+llm:<profile>
     seed: int = 0
     sim_clock: bool = False                 # simulated latency; use for code-only agents
     settings: RunSettings = Field(default_factory=RunSettings)

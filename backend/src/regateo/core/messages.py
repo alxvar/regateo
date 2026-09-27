@@ -32,6 +32,30 @@ class Move(BaseModel):
     meta: dict[str, Any] = Field(default_factory=dict)
 
 
+class ReadKind(StrEnum):
+    OFFER = "offer"              # puts a price forward
+    ACCEPT = "accept"            # accepts the other side's price
+    REJECT = "reject"            # refuses or walks away
+    NONE = "none"                # no price move (talk, questions, restating a price)
+
+
+class Reading(BaseModel):
+    """What the referee reads a delivered message as. Computed once, when the message arrives
+    (referee.reader), and stored, so the detector, reports and UI all agree.
+
+    `price` is None when the message names no price, or names several and the reader could
+    not tell which one is the offer.
+    """
+
+    kind: ReadKind
+    price: float | None = None
+    source: str = "rules"                      # structured | rules | llm
+    ambiguous: bool = False                    # the rules alone could not decide
+    candidates: list[float] = Field(default_factory=list)   # amounts the message names
+    note: str = ""
+    shadow: Reading | None = None              # a second reader's view, log-only
+
+
 class Message(BaseModel):
     idx: int                                   # 0-based position in the transcript
     sender: Role
@@ -39,6 +63,7 @@ class Message(BaseModel):
     move: Move                                 # as produced by the sender
     t: float = 0.0                             # seconds since match start when delivered
     latency_s: float = 0.0                     # time the sender took to produce it
+    reading: Reading | None = None             # referee's reading; never shown to agents
 
     @property
     def round(self) -> int:

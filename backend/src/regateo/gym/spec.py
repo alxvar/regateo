@@ -37,7 +37,8 @@ class GymSpec(ExperimentSpec):
             raise ValueError("A and B are the same agent configuration")
         if self.mode == "benchmark" and not self.opponents:
             raise ValueError("benchmark mode needs opponents")
-        common = {"protocol": self.protocol, "detector": self.detector, "sim_clock": self.sim_clock}
+        common = {"protocol": self.protocol, "detector": self.detector, "reader": self.reader,
+                  "sim_clock": self.sim_clock}
         jobs = []
         for i, s in enumerate(self.sample()):
             cell = cell_of(s)

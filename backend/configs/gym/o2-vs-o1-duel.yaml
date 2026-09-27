@@ -6,5 +6,6 @@ b: o1-qwen
 scenarios: {per_cell: 25, info_modes: [private], max_rounds: [4, 8], deadline_known: [true, false]}
 protocol: freetext
 detector: shadow:text+llm_judge:qwen-local
+reader: shadow:rules+llm:qwen-local     # rules decide; Qwen reads the ambiguous messages, log-only (regateo readings RUN)
 seed: 1
 settings: {concurrency: 32, cache: readwrite}

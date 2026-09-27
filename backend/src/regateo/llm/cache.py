@@ -34,6 +34,8 @@ def request_key(profile_name: str, req: LLMRequest, salt: str = "", salt_tags: t
         "salt": salt,
         "salt_tags": {t: req.tags.get(t) for t in salt_tags},
     }
+    if req.temperature is not None:        # only when set, so older cache entries keep their keys
+        body["temperature"] = req.temperature
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 

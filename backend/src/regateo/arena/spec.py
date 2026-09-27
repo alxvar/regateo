@@ -29,7 +29,8 @@ class ArenaSpec(ExperimentSpec):
 
     def jobs(self) -> list[MatchJob]:
         scenarios = self.sample()
-        common = {"protocol": self.protocol, "detector": self.detector, "sim_clock": self.sim_clock}
+        common = {"protocol": self.protocol, "detector": self.detector, "reader": self.reader,
+                  "sim_clock": self.sim_clock}
         jobs = []
         for i, j in combinations(range(len(self.roster)), 2):
             for g in range(self.games_per_pair):

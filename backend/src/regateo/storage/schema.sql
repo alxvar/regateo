@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS messages (
     move       TEXT NOT NULL,               -- JSON Move, including agent meta
     t          REAL NOT NULL DEFAULT 0,
     latency_s  REAL NOT NULL DEFAULT 0,
+    reading    TEXT,                        -- JSON Reading: the referee's reading of the message
     PRIMARY KEY (match_id, idx)
 );
 

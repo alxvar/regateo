@@ -6,21 +6,18 @@ other side offered $170 is not a deal.
 """
 from __future__ import annotations
 
-import re
 import secrets
 from abc import ABC, abstractmethod
 from typing import Literal
 
 from pydantic import BaseModel
 
-from regateo.core.messages import ActionKind, Message
+from regateo.core.messages import ActionKind, Message, ReadKind
 from regateo.core.roles import Role, other
 from regateo.llm.client import LLMClient
 from regateo.llm.errors import LLMError
 from regateo.llm.types import LLMRequest
-from regateo.referee.prices import stated_prices
-
-PRICE_TOLERANCE = 0.005   # absolute, after rounding to cents
+from regateo.referee.reader import ACCEPT, offer_options, same_price, with_readings
 
 
 class DealEvent(BaseModel):
@@ -39,10 +36,6 @@ class DealDetector(ABC):
         """Judge the last message of `history`, in the context of everything before it."""
 
 
-def _same(a: float, b: float) -> bool:
-    return abs(round(a, 2) - round(b, 2)) <= PRICE_TOLERANCE
-
-
 class StructuredDetector(DealDetector):
     """Uses the action/price fields. For platforms with an explicit accept action."""
 
@@ -57,7 +50,7 @@ class StructuredDetector(DealDetector):
         standing = _standing_offer(history[:-1], other(last.sender))
         if standing is None:
             return None
-        if last.move.price is not None and not _same(last.move.price, standing):
+        if last.move.price is not None and not same_price(last.move.price, standing):
             return None                                    # accepted a price nobody offered
         return DealEvent(price=standing, accepted_by=last.sender, idx=last.idx, detector=self.name)
 
@@ -69,59 +62,26 @@ def _standing_offer(history: list[Message], role: Role) -> float | None:
     return None
 
 
-_ACCEPT = re.compile(
-    r"\b(?:deal|i accept|we accept|accepted|agreed|i agree|we agree|you've got a deal|it's a deal|"
-    r"sold|let's do it|works for me|sounds good|we have a deal|done)\b",
-    re.IGNORECASE,
-)
-_NOT_ACCEPT = re.compile(
-    r"\b(?:no deal|not a deal|not accept|can't accept|cannot accept|won't accept|don't accept|"
-    r"not agree|don't agree|can't agree|cannot agree|not done|deal\?|if you|would you|could you|"
-    r"how about|what about|counter)\b",
-    re.IGNORECASE,
-)
-
-
 class TextDetector(DealDetector):
-    """Deterministic, conservative judge of free text.
-
-    A deal needs (1) an acceptance phrase with no negation, question or counter-offer marker,
-    and (2) a price that matches the other side's last stated price. If the accepting message
-    names prices, one of them must match; if it names none, the other side's last priced
-    message must contain exactly one price.
-    """
+    """Decides from the messages' readings (referee.reader): a deal is an acceptance whose price
+    is the other side's current offer (or, when that offer's price was unclear, one of the amounts
+    it named, stated explicitly). Quoting their old price, or "agreeing" to a price they never
+    offered, is not a deal; nor is a bare "deal" when their offer's price was unclear."""
 
     name = "text"
 
     async def check(self, history: list[Message]) -> DealEvent | None:
         if not history:
             return None
-        last = history[-1]
-        text = last.text
-        if not _ACCEPT.search(text) or _NOT_ACCEPT.search(text):
+        h = with_readings(history)
+        last = h[-1]
+        r = last.reading
+        if r is None or r.kind is not ReadKind.ACCEPT or r.price is None:
             return None
-        theirs = _last_stated(history[:-1], other(last.sender))
-        if not theirs:
+        if not any(same_price(r.price, p) for p in offer_options(h[:-1], other(last.sender))):
             return None
-        ours = stated_prices(text)
-        if ours:
-            matches = [p for p in ours if any(_same(p, t) for t in theirs)]
-            if len(matches) != 1 or len(ours) > 1:
-                return None                                # names a different or ambiguous price
-            price = matches[0]
-        elif len(theirs) == 1:
-            price = theirs[0]
-        else:
-            return None                                    # unclear which of their prices is accepted
-        return DealEvent(price=price, accepted_by=last.sender, idx=last.idx, detector=self.name,
-                         evidence=text[:200])
-
-
-def _last_stated(history: list[Message], role: Role) -> list[float]:
-    for m in reversed(history):
-        if m.sender is role and (prices := stated_prices(m.text)):
-            return prices
-    return []
+        return DealEvent(price=r.price, accepted_by=last.sender, idx=last.idx, detector=self.name,
+                         evidence=last.text[:200])
 
 
 class JudgeVerdict(BaseModel):
@@ -149,7 +109,7 @@ class LLMJudgeDetector(DealDetector):
         self.window = window
 
     async def check(self, history: list[Message]) -> DealEvent | None:
-        if not history or not _ACCEPT.search(history[-1].text):
+        if not history or not ACCEPT.search(history[-1].text):
             return None
         last = history[-1]
         tag = f"transcript_{secrets.token_hex(4)}"
@@ -167,9 +127,10 @@ class LLMJudgeDetector(DealDetector):
             return None
         if v.accepted_by is not None and v.accepted_by != last.sender.value:
             return None
-        offered = [p for m in history[:-1] if m.sender is other(last.sender) for p in stated_prices(m.text)]
-        if not any(_same(v.price, p) for p in offered):
-            return None                                    # judge named a price nobody offered
+        offered = [m.reading.price for m in with_readings(history)[:-1] if m.sender is other(last.sender)
+                   and m.reading and m.reading.kind is ReadKind.OFFER and m.reading.price is not None]
+        if not any(same_price(v.price, p) for p in offered):
+            return None                                    # judge named a price they never offered
         return DealEvent(price=round(v.price, 2), accepted_by=last.sender, idx=last.idx,
                          detector=self.name, evidence=v.evidence[:200])
 
@@ -189,6 +150,6 @@ class ShadowDetector(DealDetector):
         result = await self.primary.check(history)
         for s in self.shadows:
             alt = await s.check(history)
-            if (result is None) != (alt is None) or (result and alt and not _same(result.price, alt.price)):
+            if (result is None) != (alt is None) or (result and alt and not same_price(result.price, alt.price)):
                 self.disagreements.append((history[-1].idx, s.name, result, alt))
         return result

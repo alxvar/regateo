@@ -34,9 +34,15 @@ export interface MatchSummary {
 }
 
 export interface Move { text: string; action: ActionKind | null; price: number | null; meta: Record<string, unknown> }
+/** The referee's reading of a message (backend: referee.reader). */
+export interface Reading {
+  kind: "offer" | "accept" | "reject" | "none"; price: number | null; source: "structured" | "rules" | "llm";
+  ambiguous: boolean; candidates: number[]; note: string; shadow: Reading | null;
+}
 export interface Message {
   idx: number; sender: Role; text: string; move: Move; t: number; latency_s: number;
-  offer: number | null;   // the price this message puts forward, as the referee reads it (server-side)
+  reading: Reading;
+  offer: number | null;   // the price this message offers or accepts, per the reading
 }
 
 export interface Scenario {

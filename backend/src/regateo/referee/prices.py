@@ -7,11 +7,7 @@ as 100; see docs/learnings/idea-1.md §3.4).
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-
-from regateo.core.messages import Message
-from regateo.core.roles import Role, other
 
 _CUR_PREFIX = r"(?P<pre>[$€£]|(?:USD|EUR|GBP|US\$)\s?)"
 _NUMBER = r"(?P<num>\d{1,3}(?:[,\u202f]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
@@ -71,34 +67,3 @@ def stated_prices(text: str, *, require_currency: bool = False) -> list[float]:
             seen.append(p.value)
     return seen
 
-
-def offered_price(text: str, quoted: Iterable[float] = ()) -> float | None:
-    """The one price a message puts forward, for display and analysis.
-
-    Negotiators restate the other side's number before countering ("$120 is too low, I can do
-    $155"), so amounts equal to a price in `quoted` (what the other side said earlier) are
-    skipped, and the last remaining one is the offer. If every amount is a quote, the message is
-    repeating or accepting that price, and the last one is returned.
-    """
-    mentions = [p for p in find_prices(text) if not p.negated]
-    prices = [p.value for p in mentions if p.currency] or [p.value for p in mentions]
-    if not prices:
-        return None
-    theirs = set(quoted)
-    own = [p for p in prices if p not in theirs]
-    return (own or prices)[-1]
-
-
-def offer_path(messages: Sequence[Message]) -> list[float | None]:
-    """`offered_price` for each message of a transcript: the structured price where the platform
-    carried one, otherwise read from the text with the other side's earlier amounts as quotes."""
-    said: dict[Role, list[float]] = {Role.SELLER: [], Role.BUYER: []}
-    out: list[float | None] = []
-    for m in messages:
-        if m.move.price is not None:
-            p = m.move.price
-        else:
-            p = offered_price(m.text, said[other(m.sender)])
-        said[m.sender] += [x.value for x in find_prices(m.text)]
-        out.append(p)
-    return out

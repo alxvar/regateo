@@ -18,12 +18,12 @@ from pydantic import BaseModel
 from regateo.core.agent import AgentRef
 from regateo.core.config import data_dir
 from regateo.core.ids import new_id
-from regateo.core.messages import Message, Move
+from regateo.core.messages import Message, Move, Reading
 from regateo.core.outcome import Outcome
 from regateo.core.scenario import Scenario
 from regateo.llm.types import LLMCallRecord
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class RunRow(BaseModel):
@@ -109,9 +109,10 @@ class Store:
 
     async def append_message(self, match_id: str, m: Message) -> None:
         def q(c: sqlite3.Connection) -> None:
-            c.execute("INSERT INTO messages (match_id, idx, sender, text, move, t, latency_s)"
-                      " VALUES (?,?,?,?,?,?,?)",
-                      (match_id, m.idx, m.sender.value, m.text, m.move.model_dump_json(), m.t, m.latency_s))
+            c.execute("INSERT INTO messages (match_id, idx, sender, text, move, t, latency_s, reading)"
+                      " VALUES (?,?,?,?,?,?,?,?)",
+                      (match_id, m.idx, m.sender.value, m.text, m.move.model_dump_json(), m.t, m.latency_s,
+                       m.reading.model_dump_json() if m.reading else None))
             c.commit()
         await self._run(q)
 
@@ -189,7 +190,9 @@ class Store:
         rows = await self._run(lambda c: c.execute(
             "SELECT * FROM messages WHERE match_id = ? ORDER BY idx", (match_id,)).fetchall())
         return [Message(idx=r["idx"], sender=r["sender"], text=r["text"],
-                        move=Move.model_validate_json(r["move"]), t=r["t"], latency_s=r["latency_s"])
+                        move=Move.model_validate_json(r["move"]), t=r["t"], latency_s=r["latency_s"],
+                        reading=Reading.model_validate_json(r["reading"])
+                        if "reading" in r.keys() and r["reading"] else None)   # absent in v1 files opened read-only
                 for r in rows]
 
     async def match_statuses(self, run_id: str) -> dict[str, str]:
@@ -258,6 +261,10 @@ def _connect(path: Path, readonly: bool = False) -> sqlite3.Connection:
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version == 0:
         conn.executescript(Path(__file__).with_name("schema.sql").read_text())
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        conn.commit()
+    elif version == 1:
+        conn.execute("ALTER TABLE messages ADD COLUMN reading TEXT")
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.commit()
     elif version != SCHEMA_VERSION:

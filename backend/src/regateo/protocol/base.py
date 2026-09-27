@@ -32,7 +32,11 @@ class TurnProtocol(ABC):
         text = move.text.strip()[: rules.max_message_chars]
         if self.structured:
             return move.model_copy(update={"text": text})
-        return move.model_copy(update={"text": text, "action": None, "price": None})
+        meta = move.meta
+        if move.action is not None or move.price is not None:
+            # Kept as ground truth for auditing how the referee reads the text.
+            meta = {**meta, "intent": {"action": move.action, "price": move.price}}
+        return move.model_copy(update={"text": text, "action": None, "price": None, "meta": meta})
 
     def delivered(self, move: Move) -> Move:
         """What the other side receives: no agent metadata, structured fields only if supported."""
@@ -41,8 +45,10 @@ class TurnProtocol(ABC):
         return Move(text=move.text)
 
     def view_of(self, history: list[Message], viewer: Role) -> list[Message]:
-        """History as `viewer` may see it: their own messages in full, the opponent's as delivered."""
-        return [m if m.sender is viewer else m.model_copy(update={"move": self.delivered(m.move)})
+        """History as `viewer` may see it: their own messages in full, the opponent's as delivered.
+        The referee's readings are hidden from both, as a real platform would not provide them."""
+        return [m.model_copy(update={"reading": None}) if m.sender is viewer
+                else m.model_copy(update={"move": self.delivered(m.move), "reading": None})
                 for m in history]
 
     @abstractmethod

@@ -1,13 +1,22 @@
-import type { Message } from "../api";
+import type { Message, Reading } from "../api";
 import { money } from "../format";
 
-/** The price a message puts forward. Extracted by the backend (referee.prices.offer_path). */
+/** The price a message offers or accepts, as the referee read it (backend: referee.reader). */
 export const priceOf = (m: Message): number | null => m.offer;
 
-/** The price the agent meant, when its internals record a decision (LLM agents). */
+/** What the sender meant: the protocol's record of its dropped action/price, or an LLM agent's decision. */
 function intendedPrice(m: Message): number | null {
-  const d = (m.move.meta ?? {}).decision as { price?: number | null } | undefined;
-  return typeof d?.price === "number" ? d.price : null;
+  const meta = m.move.meta ?? {};
+  for (const key of ["intent", "decision"]) {
+    const d = meta[key] as { price?: number | null } | undefined;
+    if (typeof d?.price === "number") return d.price;
+  }
+  return null;
+}
+
+function describe(r: Reading, currency: string): string {
+  const price = r.kind === "offer" || r.kind === "accept" ? ` ${r.price != null ? money(r.price, currency) : "?"}` : "";
+  return `${r.kind}${price}`;
 }
 
 export function Chat({ messages, names, currency, closingIdx }: {
@@ -34,8 +43,14 @@ export function Chat({ messages, names, currency, closingIdx }: {
                 <strong>{m.sender}</strong>
                 <span className="muted">{names[m.sender]}</span>
                 <span className="muted">#{m.idx + 1}</span>
-                {m.move.action && (
-                  <span className="chip">{m.move.action}{m.move.price != null ? ` ${money(m.move.price, currency)}` : ""}</span>
+                <span className="chip" title={m.reading.note || `read by ${m.reading.source}`}>
+                  {describe(m.reading, currency)}
+                  {m.reading.source === "llm" ? " · model" : m.reading.ambiguous ? " · unclear" : ""}
+                </span>
+                {m.reading.shadow && (
+                  <span className="chip" title="shadow reader (log only)">
+                    model reads {describe(m.reading.shadow, currency)}
+                  </span>
                 )}
                 {flags.map((f) => <span key={f} className="chip">{f}</span>)}
                 <span className="muted">{m.latency_s.toFixed(1)}s</span>

@@ -90,7 +90,10 @@ async def test_opponent_never_sees_meta_or_structure_in_freetext():
     r = await play(scen(), seller, buyer, protocol="freetext", detector=TextDetector())
     first = buyer.seen[0].history[0]
     assert first.move.meta == {} and first.move.price is None
-    assert seller.seen[1].history[0].move.meta == {"secret": "hold at 160"}   # own history keeps meta
+    own = seller.seen[1].history[0].move.meta
+    assert own["secret"] == "hold at 160" and own["intent"]["price"] == 170   # own history keeps meta + intent
+    assert all(m.reading is None for o in seller.seen + buyer.seen for m in o.history)   # referee's, not theirs
+    assert [m.reading.kind for m in r.transcript.messages] == ["offer", "offer", "offer", "accept"]
     assert r.outcome.price == 165
 
 

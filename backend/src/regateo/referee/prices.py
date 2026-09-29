@@ -21,6 +21,10 @@ _MONEY = re.compile(
 _NEGATION = re.compile(r"\b(?:not|never|nor|won't|can't|cannot|wouldn't|couldn't)\b[^.!?;\d]{0,20}$",
                        re.IGNORECASE)
 _SCALES = {"k": 1e3, "thousand": 1e3, "m": 1e6, "million": 1e6}
+# A total next to a unit price: "$130 per unit, $6,500 total", "for a total of $6,500".
+_TOTAL_AFTER = re.compile(r"^\s*\)?\s*(?:in\s+)?(?:total|altogether|overall)\b", re.IGNORECASE)
+_TOTAL_BEFORE = re.compile(r"\b(?:total(?:ing|ling|s)?|total of|total is|in total|comes to|works out to|altogether)"
+                           r"\s*[:=(]?\s*$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,7 @@ class PriceMention:
     end: int
     currency: bool      # had a currency symbol/word, or a k/m scale
     negated: bool       # preceded closely by a negation ("definitely not $100")
+    total: bool = False  # marked as a total ("$6,500 total"), i.e. derived from a unit price
 
     @property
     def strong(self) -> bool:
@@ -49,8 +54,17 @@ def find_prices(text: str) -> list[PriceMention]:
             end=m.end(),
             currency=bool(m.group("pre") or m.group("post") or scale),
             negated=bool(_NEGATION.search(text[max(0, m.start() - 40): m.start()])),
+            total=bool(_TOTAL_AFTER.search(text[m.end(): m.end() + 20])
+                       or _TOTAL_BEFORE.search(text[max(0, m.start() - 25): m.start()])),
         ))
     return out
+
+
+def without_totals(mentions: list[PriceMention]) -> list[PriceMention]:
+    """Drop amounts marked as totals when the message also names other amounts: with
+    "$130 per unit, $6,500 total" the price is $130. A lone total is kept, as it may be the price."""
+    rest = [p for p in mentions if not p.total]
+    return rest if rest else mentions
 
 
 def stated_prices(text: str, *, require_currency: bool = False) -> list[float]:
@@ -58,7 +72,7 @@ def stated_prices(text: str, *, require_currency: bool = False) -> list[float]:
 
     If any amount is currency-marked, only marked ones count ("50 chairs for $900" -> [900]).
     """
-    mentions = [p for p in find_prices(text) if not p.negated]
+    mentions = without_totals([p for p in find_prices(text) if not p.negated])
     if require_currency or any(p.currency for p in mentions):
         mentions = [p for p in mentions if p.currency]
     seen: list[float] = []

@@ -1,0 +1,17 @@
+# qwen-local with thinking on, using the model card's thinking-mode sampling. vLLM's reasoning
+# parser keeps the thinking out of the answer, so structured output still applies to the answer.
+name: qwen-local-think
+provider: openai
+model: qwen-local
+base_url: ${VLLM_BASE_URL:-http://localhost:8001/v1}
+max_tokens: 8192                   # thinking counts against this
+max_concurrency: 16
+timeout_s: 300
+max_retries: 1
+extra:
+  temperature: 1.0
+  top_p: 0.95
+  presence_penalty: 0.0
+  extra_body:
+    top_k: 20
+    chat_template_kwargs: {enable_thinking: true}

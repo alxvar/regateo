@@ -1,6 +1,8 @@
 """Model profiles: named, config-file descriptions of a model endpoint and its settings."""
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Literal
 
@@ -40,9 +42,23 @@ class ModelProfile(BaseModel):
     price: Price = Field(default_factory=Price)
     extra: dict[str, Any] = Field(default_factory=dict)   # passed through to the SDK call
 
+    def fingerprint(self) -> str:
+        """Hash of the settings that shape a response. Endpoint, limits and prices are left out,
+        so the same model on another machine, or with another concurrency cap, keeps its cache."""
+        body = self.model_dump(mode="json", include={"provider", "model", "max_tokens", "effort", "thinking", "extra"})
+        return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
+
 
 def load_profile(name_or_path: str | Path) -> ModelProfile:
     path = Path(name_or_path)
     if path.suffix not in (".yaml", ".yml"):
         path = configs_dir() / "models" / f"{name_or_path}.yaml"
     return load_yaml(path, ModelProfile)
+
+
+def profile_fingerprint(name: str) -> str | None:
+    """Fingerprint of a named profile, or None when there is no such profile file."""
+    try:
+        return load_profile(name).fingerprint()
+    except FileNotFoundError:
+        return None

@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from regateo.core.agent import Observation
-from regateo.core.messages import ActionKind, Message, Move
+from regateo.core.messages import ActionKind, Message, Move, ReadKind
 from regateo.core.roles import Role, sign
 from regateo.core.scenario import PrivateView
 from regateo.referee.prices import stated_prices
+from regateo.referee.reader import with_readings
 
 _SYMBOLS = {"USD": "$", "EUR": "€", "GBP": "£"}
 
@@ -69,3 +70,48 @@ def safe_fallback(obs: Observation, reason: str) -> Move:
         price=price,
         meta={"fallback": reason},
     )
+
+
+def state_digest(obs: Observation, *, structured: bool) -> str:
+    """A private summary of where the negotiation stands, added to the model's turn so it doesn't
+    have to rebuild the numbers from free text. Their offers are read with the referee's rules
+    (which skip prices they merely quote); under free text we only use their words, as a real
+    opponent's structured intent wouldn't reach us."""
+    v, me = obs.view, obs.view.role
+    s = sign(me)
+    f = lambda p: fmt_price(p, v.currency)  # noqa: E731
+    history = [m if m.sender is me or structured else m.model_copy(update={"move": Move(text=m.text)})
+               for m in obs.history]
+    read = with_readings([m.model_copy(update={"reading": None}) for m in history])
+    theirs = [m.reading.price for m in read if m.sender is not me and m.reading
+              and m.reading.kind is ReadKind.OFFER and m.reading.price is not None]
+    ours = our_offers(obs)
+    lines = ["[Private notes from your own system, not from the other side]",
+             f"- Your offers so far: {' -> '.join(map(f, ours)) if ours else 'none yet'}",
+             f"- Their offers so far: {' -> '.join(map(f, theirs)) if theirs else 'none yet'}"]
+    moves = []
+    if len(theirs) >= 2:
+        step = s * (theirs[-1] - theirs[-2])
+        moves.append(f"they moved {f(abs(step))} toward you" if step > 0 else
+                     f"they moved {f(-step)} away from you" if step < 0 else "they didn't move")
+    if len(ours) >= 2:
+        moves.append(f"you moved {f(abs(ours[-1] - ours[-2]))} toward them")
+    if moves:
+        lines.append(f"- Last moves: {'; '.join(moves)}")
+    if theirs:
+        margin = s * (theirs[-1] - v.reservation)
+        where = "better than" if margin > 0 else "worse than" if margin < 0 else "exactly"
+        lines.append(f"- Their latest offer {f(theirs[-1])} is {f(abs(margin)) + ' ' if margin else ''}{where} "
+                     f"your walk-away price")
+    if theirs and ours:
+        lines.append(f"- Gap between your latest offer and theirs: {f(abs(ours[-1] - theirs[-1]))}")
+    last = read[-1] if read and read[-1].sender is not me else None
+    if last and last.reading and last.reading.kind is ReadKind.ACCEPT:
+        price = f(last.reading.price) if last.reading.price is not None else "a price"
+        lines.append(f"- Their last message reads as accepting {price}")
+    if v.max_rounds is not None:
+        sent = sum(m.sender is me for m in obs.history)
+        lines.append(f"- Your messages left, including this one: {max(v.max_rounds - sent, 0)} of {v.max_rounds}")
+    else:
+        lines.append("- Messages left: unknown")
+    return "\n".join(lines)

@@ -3,7 +3,7 @@ import random
 import pytest
 
 from regateo.agents import AgentContext, AgentSpec, build_agent
-from regateo.agents.baselines.o1 import Decision
+from regateo.agents.baselines.o1 import AnalysisFirst, Decision
 from regateo.agents.baselines.o2 import check
 from regateo.core import ActionKind as A
 from regateo.core import Message, Move, Observation, Role, Rules, Scenario
@@ -39,6 +39,47 @@ async def test_o1_prompt_hides_nothing_it_shouldnt_and_maps_turns():
     req = fake.requests[0]
     assert "$100" in req.system and "$150" not in req.system          # own reservation only
     assert [c.role for c in req.messages] == ["user"]
+
+
+async def test_o1_analysis_is_written_first_and_kept_private():
+    fake = FakeProvider([AnalysisFirst(analysis="They opened low; hold at $170.", action="offer", price=170,
+                                       message="I'd like $170."),
+                         AnalysisFirst(analysis="Still far apart.", action="offer", price=165, message="$165 then.")])
+    agent = build_agent(AgentSpec(kind="o1", model="fake", params={"analysis": True}), S.view_for(Role.SELLER),
+                        ctx(Role.SELLER, fake, "freetext"))
+    move = await agent.respond(obs(Role.SELLER, []))
+    assert move.price == 170 and move.meta["decision"]["analysis"].startswith("They opened")
+    assert "hold" not in move.text                                      # the analysis is never sent
+    req = fake.requests[0]
+    assert req.output_schema is AnalysisFirst and list(AnalysisFirst.model_fields)[0] == "analysis"
+    assert '"analysis" field' in req.system
+    history = [Message(idx=0, sender=Role.SELLER, text=move.text, move=move), m(1, Role.BUYER, "How about $120?")]
+    await agent.respond(obs(Role.SELLER, history))
+    assert "hold" not in fake.requests[1].messages[1].content           # not replayed to the model either
+
+
+async def test_o1_state_digest():
+    fake = FakeProvider([Decision(action="offer", price=150, message="$150")])
+    agent = build_agent(AgentSpec(kind="o1", model="fake", params={"state_digest": True}), S.view_for(Role.SELLER),
+                        ctx(Role.SELLER, fake, "freetext"))
+    history = [m(0, Role.SELLER, "I'm asking $170.", A.OFFER, 170),
+               m(1, Role.BUYER, "$170 is too high. I can do $110."),
+               m(2, Role.SELLER, "I can come down to $160.", A.OFFER, 160),
+               m(3, Role.BUYER, "OK, I'll go to $125.")]
+    await agent.respond(obs(Role.SELLER, history))
+    turn = fake.requests[0].messages[-1].content
+    assert turn.startswith("[message 4] OK, I'll go to $125.")
+    digest = turn.split("\n\n", 1)[1]
+    assert "Your offers so far: $170 -> $160" in digest
+    assert "Their offers so far: $110 -> $125" in digest                # the quoted $170 is not their offer
+    assert "they moved $15 toward you; you moved $10 toward them" in digest
+    assert "$125 is $25 better than your walk-away price" in digest
+    assert "Gap between your latest offer and theirs: $35" in digest
+    assert "messages left, including this one: 2 of 4" in digest
+    plain = FakeProvider([Decision(action="offer", price=150, message="$150")])
+    await build_agent(AgentSpec(kind="o1", model="fake"), S.view_for(Role.SELLER),
+                      ctx(Role.SELLER, plain, "freetext")).respond(obs(Role.SELLER, history))
+    assert plain.requests[0].messages[-1].content == "[message 4] OK, I'll go to $125."   # off by default
 
 
 async def test_o1_falls_back_on_model_error():

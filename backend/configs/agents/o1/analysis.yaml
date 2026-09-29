@@ -1,0 +1,3 @@
+# Lever 1b: private analysis written before the decision (analysis_instructions.v1).
+extends: o1-qwen
+params: {analysis: true}

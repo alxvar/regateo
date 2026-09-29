@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from regateo.agents import prompts
 from regateo.agents.base import AgentContext, AgentSpec, register
-from regateo.agents.common import fmt_price, safe_fallback
+from regateo.agents.common import fmt_price, safe_fallback, state_digest
 from regateo.core.agent import Observation
 from regateo.core.messages import ActionKind, Move
 from regateo.core.roles import Role
@@ -23,14 +23,52 @@ class Decision(BaseModel):
     message: str = Field(description="what the other side reads")
 
 
+class AnalysisFirst(BaseModel):
+    """What the model fills in with `analysis` on: private reasoning first, so the price follows from it."""
+    analysis: str = Field(description="private notes; the other side never sees them")
+    action: Literal["offer", "accept", "reject", "message", "walk_away"]
+    price: float | None = Field(default=None, description="price offered or accepted; null otherwise")
+    message: str = Field(description="what the other side reads")
+
+
+class AnalysedDecision(Decision):
+    """A decision with the analysis behind it. The analysis is kept in the move's meta, and left out
+    when the conversation is replayed to the model, like any other private note."""
+    analysis: str
+
+
 OPENING_STUB = "(The negotiation begins. You make the first move.)"
+DEFAULT_PROMPT = "negotiator_system.v1"
+DEFAULT_ANALYSIS = "analysis_instructions.v1"
+
+
+def _analysis_ref(params: dict) -> str | None:
+    a = params.get("analysis")
+    return DEFAULT_ANALYSIS if a is True else (a or None)
 
 
 class EndToEndAgent:
-    """Params: `persona` (prompt name, e.g. "tough"), `fence` (wrap opponent text in per-turn
-    random tags), `effort`, `max_tokens`."""
+    """Params:
+    - `prompt`: system prompt, `name.vN` (default negotiator_system.v1).
+    - `analysis`: true (or a prompt ref) to have the model write private analysis before deciding;
+      the instructions in analysis_instructions.v1 are added to the system prompt.
+    - `state_digest`: true to add a private summary of the offers so far to each turn (common.state_digest).
+    - `persona` (prompt name, e.g. "tough"), `fence` (wrap opponent text in per-turn random tags),
+      `effort`, `max_tokens`."""
 
     stage = "o1"
+
+    @staticmethod
+    def prompt_refs(spec: AgentSpec) -> list[str]:
+        """Prompt files this spec renders, for its identity (AgentSpec.ref)."""
+        refs = [spec.params.get("prompt", DEFAULT_PROMPT)]
+        persona = spec.params.get("persona") or (spec.kind.split(":", 1)[1] if spec.kind.startswith("persona:")
+                                                 else None)
+        if persona:
+            refs.append(f"persona_{persona}")
+        if analysis := _analysis_ref(spec.params):
+            refs.append(analysis)
+        return refs
 
     def __init__(self, spec: AgentSpec, view: PrivateView, ctx: AgentContext):
         self.name = spec.label
@@ -57,8 +95,9 @@ class EndToEndAgent:
         if v.context:
             extra.append(f"- {v.context}")
         persona = self.params.get("persona")
-        return prompts.render(
-            "negotiator_system",
+        analysis = _analysis_ref(self.params)
+        system = prompts.render(
+            self.params.get("prompt", DEFAULT_PROMPT),
             role=v.role.value,
             item=v.item,
             reservation=f(v.reservation),
@@ -69,6 +108,7 @@ class EndToEndAgent:
             protocol=self.ctx.protocol.describe(),
             persona=f"\n{prompts.render(f'persona_{persona}')}\n" if persona else "",
         )
+        return f"{system}\n\n{prompts.render(analysis)}" if analysis else system
 
     def _messages(self, obs: Observation, feedback: str | None = None) -> list[ChatMessage]:
         me = obs.view.role
@@ -91,6 +131,9 @@ class EndToEndAgent:
                 price = f" {fmt_price(m.move.price, obs.view.currency)}" if m.move.price is not None else ""
                 text = f"[{m.move.action.value}{price}]\n{text}"
             out.append(ChatMessage(role="user", content=f"[message {m.idx + 1}] {text}"))
+        if self.params.get("state_digest"):
+            digest = state_digest(obs, structured=self.ctx.protocol.structured)
+            out[-1] = ChatMessage(role="user", content=f"{out[-1].content}\n\n{digest}")
         if feedback:
             last = out[-1]
             out[-1] = ChatMessage(role="user", content=f"{last.content}\n\n[Note from your own system, not from the "
@@ -99,14 +142,18 @@ class EndToEndAgent:
         return out
 
     async def decide(self, obs: Observation, feedback: str | None = None) -> Decision:
+        analysed = bool(_analysis_ref(self.params))
         resp = await self.llm.complete(LLMRequest(
             messages=self._messages(obs, feedback),
             system=self.system,
-            output_schema=Decision,
+            output_schema=AnalysisFirst if analysed else Decision,
             effort=self.params.get("effort"),
             max_tokens=self.params.get("max_tokens"),
             tags={"stage": self.stage},
         ))
+        if analysed:
+            assert isinstance(resp.parsed, AnalysisFirst)
+            return AnalysedDecision(**resp.parsed.model_dump())
         assert isinstance(resp.parsed, Decision)
         return resp.parsed
 
@@ -123,6 +170,6 @@ class EndToEndAgent:
         return self.to_move(decision)
 
 
-@register("o1")
+@register("o1", prompts=EndToEndAgent.prompt_refs)
 def build_o1(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> EndToEndAgent:
     return EndToEndAgent(spec, view, ctx)

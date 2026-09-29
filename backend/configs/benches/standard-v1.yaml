@@ -1,0 +1,21 @@
+# The standard bench: what every challenger is measured on. Frozen: to change opponents,
+# scenarios or rules, add standard-v2 and re-run the reference on it. Numbers from different
+# benches are not comparable.
+#
+# Same opponents, scenarios and seed as the o2-vs-o1-benchmark run (run_01a0e4663e0fdb8238ab).
+# full: 2 cells x 10 scenarios x 6 opponents x 2 roles = 240 pairs per challenger (share CI about +-0.04).
+# screen: the first 4 scenarios per cell, 96 pairs (about +-0.07): enough to drop clear losers early.
+mode: benchmark
+opponents:
+  - scripted:hardliner
+  - scripted:liar
+  - scripted:injector
+  - {kind: "persona:tough", model: qwen-local}
+  - {kind: "persona:manipulator", model: qwen-local}
+  - {kind: "persona:injector", model: qwen-local}
+scenarios: {per_cell: 10, info_modes: [private], max_rounds: [6], deadline_known: [true, false]}
+tiers: {screen: 4}
+protocol: freetext
+detector: text
+reader: shadow:rules+llm:qwen-local     # rules decide; Qwen reads the ambiguous messages, log-only
+seed: 2

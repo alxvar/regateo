@@ -19,7 +19,7 @@ class PersonaAgent(EndToEndAgent):
     stage = "persona"
 
 
-@register("persona:")
+@register("persona:", prompts=PersonaAgent.prompt_refs)
 def build_persona(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> PersonaAgent:
     persona = spec.kind.split(":", 1)[1]
     if persona not in PERSONAS:

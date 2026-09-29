@@ -23,7 +23,7 @@ from regateo.core.roles import Role, other
 from regateo.llm.client import LLMClient
 from regateo.llm.errors import LLMError
 from regateo.llm.types import LLMRequest
-from regateo.referee.prices import find_prices
+from regateo.referee.prices import find_prices, without_totals
 
 PRICE_TOLERANCE = 0.005   # absolute, after rounding to cents
 
@@ -42,7 +42,7 @@ NOT_ACCEPT = re.compile(
     r"end(?:ing)? (?:this|the) negotiation|disregard)\b"
     # a negation shortly before an agreement verb: "have not accepted", "can't close this deal at",
     # "never agreed to", "not quite where I can close", "isn't acceptable"
-    r"|\b(?:not|never|cannot|unable to|\w+n't)\s+(?:\w+\s+){0,4}?"
+    r"|\b(?:not|never|cannot|unable to|\w+n't)\s+(?:[\w'’]+\s+){0,4}?"
     r"(?:accept|agree|close|sell|proceed|finali[sz]e|acceptable)\w*",
     re.IGNORECASE,
 )
@@ -103,7 +103,7 @@ _OFFER_CUE = re.compile(
 # Refusing a price rather than offering it: "I'm not ready to meet at that level", "$175 is above
 # what I can justify", "too high for me".
 _REFUSAL = re.compile(
-    r"\b(?:not|never|cannot|unable to|\w+n't)\s+(?:\w+\s+){0,4}?(?:meet|go|do|pay|afford|justify|sell|take)\b"
+    r"\b(?:not|never|cannot|unable to|\w+n't)\s+(?:[\w'’]+\s+){0,4}?(?:meet|go|do|pay|afford|justify|sell|take)\b"
     r"|\b(?:above|below|beyond|over|under) (?:what i can|my budget|my limit|my minimum|my maximum)"
     r"|\btoo (?:high|low|steep|much)\b",
     re.IGNORECASE,
@@ -117,7 +117,7 @@ def rule_reading(m: Message, earlier: Sequence[Message]) -> Reading:
     if m.move.action is not None:
         return _structured(m, standing)
 
-    mentions = [p for p in find_prices(m.text) if not p.negated]
+    mentions = without_totals([p for p in find_prices(m.text) if not p.negated])
     named: list[float] = []
     for v in [p.value for p in mentions if p.currency] or [p.value for p in mentions]:
         if not _has(named, v):

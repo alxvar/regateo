@@ -13,8 +13,10 @@ import typer
 from regateo.agents import AgentSpec
 from regateo.arena import ArenaSpec, build_arena_report, run_arena
 from regateo.cli import format as fmt
+from regateo.core import frozen
 from regateo.core.config import configs_dir, data_dir, load_env, load_yaml
 from regateo.core.scenario import ScenarioSpec, sample_scenarios
+from regateo.core.version import code_version
 from regateo.gym import GymSpec, build_gym_report, run_gym
 from regateo.llm.cache import CachedClient, CacheMode
 from regateo.llm.profiles import load_profile
@@ -39,6 +41,13 @@ def _config(value: str, kind: str) -> Path:
     if path.suffix in (".yaml", ".yml"):
         return path
     return configs_dir() / kind / f"{value}.yaml"
+
+
+def _warn_dirty() -> None:
+    code = code_version()
+    if code.get("dirty"):
+        sys.stderr.write(f"warning: uncommitted changes (recorded as {code['commit'][:8]}+{code['changes']}). "
+                         "Commit before a run you plan to quote.\n")
 
 
 def _progress(summary: RunSummary) -> None:
@@ -105,6 +114,7 @@ def gym(
     """Run (or resume) a head-to-head gym experiment and print its report."""
     spec = load_yaml(_config(config, "gym"), GymSpec)
     spec.settings = _override(spec.settings, concurrency, budget)
+    _warn_dirty()
 
     async def go() -> None:
         store = await Store.open(_db(db))
@@ -129,6 +139,7 @@ def arena(
     """Run (or resume) a round-robin tournament and print the leaderboard."""
     spec = load_yaml(_config(config, "arena"), ArenaSpec)
     spec.settings = _override(spec.settings, concurrency, budget)
+    _warn_dirty()
 
     async def go() -> None:
         store = await Store.open(_db(db))
@@ -182,7 +193,8 @@ def readings(
         await store.close()
         if reread:
             reader = build_reader(reread, lambda profile: CachedClient(
-                get_client(load_profile(profile)), data_dir() / "llm_cache.db", CacheMode.READWRITE))
+                get_client(load_profile(profile)), data_dir() / "llm_cache.db", CacheMode.READWRITE,
+                profile_key=load_profile(profile).fingerprint()))
             gate = asyncio.Semaphore(concurrency)
 
             async def one(mm: MatchMessages) -> MatchMessages:
@@ -206,6 +218,13 @@ def runs(kind: str | None = None, limit: int = 20, db: DbOpt = None) -> None:
         await store.close()
 
     asyncio.run(go())
+
+
+@app.command()
+def freeze(paths: Annotated[list[Path], typer.Argument(help="files to freeze, e.g. a prompt with results")]) -> None:
+    """Record files in configs/frozen.json; a unit test then fails if they change."""
+    for key in frozen.freeze(paths):
+        typer.echo(f"frozen {key}")
 
 
 @app.command()

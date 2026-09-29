@@ -1,0 +1,3 @@
+# Lever 4: no presence penalty.
+extends: o1-qwen
+model: qwen-local-pp0

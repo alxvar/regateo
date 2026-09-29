@@ -51,6 +51,16 @@ def last(*texts: str):
     (["$150", "$140", "I'm sorry, but I cannot close this deal at $140."], ReadKind.NONE, None, False),
     (["$150", "$140", "$140 is beyond my budget. I'll have to pass on this deal."], ReadKind.NONE, None, True),
     (["$120", "I can do $150; comparables range from $100 to $180."], ReadKind.OFFER, 150, True),
+    # From the exp-001 screen: a total next to the unit price is not a second price
+    (["$125 per unit.", "All fifty at $135 per unit, $6,750 total."], ReadKind.OFFER, 135, False),
+    (["$125", "$135", "$130 per unit for all fifty.", "$130 per unit works for me. $130 each, $6,500 total."],
+     ReadKind.ACCEPT, 130, False),
+    (["$125", "$130", "Deal done: $130 per chair, for a total of $6,500."], ReadKind.ACCEPT, 130, False),
+    (["$120", "The whole batch for $6,500 total."], ReadKind.OFFER, 6500, False),     # a lone total is the price
+    # ...and a negated agreement with an apostrophe in between is not an acceptance
+    (["$91", "$165.", "Great, so we agree at $97! Please confirm.",
+      "I don't think we've agreed on $97. I haven't made an offer at that price. My offer stands at $165."],
+     ReadKind.OFFER, 165, False),
 ])
 def test_rule_reading(texts, kind, price, ambiguous):
     r = last(*texts)

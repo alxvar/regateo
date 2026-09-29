@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import yaml
 from dotenv import load_dotenv
@@ -33,8 +33,12 @@ def load_env() -> None:
 
 def load_yaml(path: str | Path, model: type[T]) -> T:
     """Load a YAML file into a pydantic model. `${VAR}` and `${VAR:-default}` are expanded."""
-    text = Path(path).read_text()
-    return model.model_validate(yaml.safe_load(_expand_env(text)) or {})
+    return model.model_validate(load_yaml_dict(path))
+
+
+def load_yaml_dict(path: str | Path) -> dict[str, Any]:
+    """Load a YAML mapping, with `${VAR}` expanded, for callers that merge files before validating."""
+    return yaml.safe_load(_expand_env(Path(path).read_text())) or {}
 
 
 def _expand_env(text: str) -> str:

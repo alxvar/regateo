@@ -23,9 +23,10 @@ class CacheMode(StrEnum):
     READWRITE = "readwrite"  # replay hits, call and store on a miss
 
 
-def request_key(profile_name: str, req: LLMRequest, salt: str = "", salt_tags: tuple[str, ...] = ()) -> str:
+def request_key(profile_key: str, req: LLMRequest, salt: str = "", salt_tags: tuple[str, ...] = ()) -> str:
+    """`profile_key` is the profile's fingerprint (or its name, for callers without one)."""
     body = {
-        "profile": profile_name,
+        "profile": profile_key,
         "system": req.system,
         "messages": [m.model_dump() for m in req.messages],
         "max_tokens": req.max_tokens,
@@ -41,13 +42,16 @@ def request_key(profile_name: str, req: LLMRequest, salt: str = "", salt_tags: t
 
 class CachedClient:
     """`salt` separates otherwise identical requests that should sample independently, e.g. the
-    sample index. `salt_tags` does the same per request from its tags: with ("match", "role"), two
-    matches with the same prompt get independent samples, while re-running a match replays it."""
+    sample index. `salt_tags` does the same per request from its tags: with ("replay", "role"), two
+    matches with the same prompt get independent samples, while replaying the same match hits.
+    `profile_key` (a `ModelProfile.fingerprint()`) makes a changed profile setting a cache miss;
+    without it the key falls back to the profile name, and editing the profile would replay stale answers."""
 
     def __init__(self, inner: LLMClient, path: str | Path, mode: CacheMode = CacheMode.READWRITE,
-                 salt: str = "", salt_tags: tuple[str, ...] = ()):
+                 salt: str = "", salt_tags: tuple[str, ...] = (), profile_key: str | None = None):
         self.inner = inner
         self.profile_name = inner.profile_name
+        self.profile_key = profile_key or inner.profile_name
         self.provider = inner.provider
         self.mode = mode
         self.salt = salt
@@ -73,7 +77,7 @@ class CachedClient:
     async def complete(self, req: LLMRequest) -> LLMResponse:
         if self.mode is CacheMode.OFF:
             return await self.inner.complete(req)
-        key = request_key(self.profile_name, req, self.salt, self.salt_tags)
+        key = request_key(self.profile_key, req, self.salt, self.salt_tags)
         if self.mode in (CacheMode.READ, CacheMode.READWRITE) and (hit := self._get(key)):
             self.hits += 1
             resp = LLMResponse.model_validate({**json.loads(hit), "cached": True})

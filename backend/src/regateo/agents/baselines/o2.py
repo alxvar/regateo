@@ -101,7 +101,7 @@ class VetoedAgent(EndToEndAgent):
         return self.to_move(fixed, vetoes=vetoes, repaired=True, rejected=decision.model_dump())
 
 
-@register("o2")
+@register("o2", prompts=VetoedAgent.prompt_refs)
 def build_o2(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> VetoedAgent:
     return VetoedAgent(spec, view, ctx)
 

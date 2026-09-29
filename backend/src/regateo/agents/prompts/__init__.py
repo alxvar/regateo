@@ -1,6 +1,12 @@
-"""Versioned prompt templates. Files are `<name>.v<N>.md`; `$placeholders` are filled with string.Template."""
+"""Versioned prompt templates. Files are `<name>.v<N>.md`; `$placeholders` are filled with string.Template.
+
+A prompt is referred to as `<name>.v<N>`, or `<name>` for v1. Once a version has benchmark
+results, it is frozen (configs/frozen.json): change it by adding the next version.
+"""
 from __future__ import annotations
 
+import hashlib
+import re
 from functools import cache
 from pathlib import Path
 from string import Template
@@ -8,11 +14,25 @@ from string import Template
 _DIR = Path(__file__).parent
 
 
+def path(ref: str) -> Path:
+    """File for `name.vN` (or `name`, meaning v1)."""
+    name = ref if re.search(r"\.v\d+$", ref) else f"{ref}.v1"
+    p = _DIR / f"{name}.md"
+    if not p.exists():
+        raise FileNotFoundError(f"no prompt {ref!r} ({p.name})")
+    return p
+
+
 @cache
-def _load(name: str, version: int) -> Template:
-    return Template((_DIR / f"{name}.v{version}.md").read_text())
+def _load(ref: str) -> str:
+    return path(ref).read_text()
 
 
-def render(name: str, version: int = 1, **values: object) -> str:
+def render(ref: str, **values: object) -> str:
     """Fill a template. Missing placeholders raise, so a prompt never ships with `$gaps`."""
-    return _load(name, version).substitute({k: str(v) for k, v in values.items()}).strip()
+    return Template(_load(ref)).substitute({k: str(v) for k, v in values.items()}).strip()
+
+
+def fingerprint(ref: str) -> str:
+    """Hash of the template text, so an edited prompt is a different agent."""
+    return hashlib.sha256(_load(ref).encode()).hexdigest()[:12]

@@ -44,6 +44,14 @@ def gym_report(r: GymReport) -> str:
         f"past-reservation {r.b.past_reservation}  errors {r.b.errors}",
         f"  A - B: {diff(r.diff)}",
     ]
+    if len(r.challengers) > 1:
+        lines += [f"\nChallengers vs reference B = {r.b.label} (paired on the same matches)",
+                  f"  {'':4} {'agent':28} {'share':>24} {'deals':>24}  {'vs B':>7}  {'p':>7}  {'n':>4}"]
+        for c in sorted(r.challengers, key=lambda c: -(c.diff.mean_diff or 0)):
+            d = c.diff
+            cols = f"{d.mean_diff:+7.3f}  {d.p_value:7.4f}" if d.p_value is not None else f"{'-':>7}  {'-':>7}"
+            lines.append(f"  {c.subject:4} {c.side.label[:28]:28} {est(c.side.mean_share):>24} "
+                         f"{est(c.side.deal_rate, True):>24}  {cols}  {d.n:4d}")
     lines += _table("By opponent", r.by_opponent) + _table("By role", r.by_role) + _table("By cell", r.by_cell)
     lines.append(f"\nCost ${r.cost_usd:.4f}  tokens in {r.input_tokens:,} / out {r.output_tokens:,}")
     return "\n".join(lines)

@@ -28,6 +28,14 @@ class Breakdown(BaseModel):
     diff: PairedResult
 
 
+class ChallengerStats(BaseModel):
+    """One challenger against the reference (B), on the pairs where both finished."""
+    subject: str                     # a, a2, a3...
+    side: SideStats
+    reference: SideStats             # B on the same pairs
+    diff: PairedResult               # paired challenger - B
+
+
 class GymReport(BaseModel):
     run_id: str
     name: str
@@ -41,6 +49,7 @@ class GymReport(BaseModel):
     by_opponent: list[Breakdown]
     by_role: list[Breakdown]
     by_cell: list[Breakdown]
+    challengers: list[ChallengerStats] = []    # benchmark mode: A and every extra challenger vs B
     cost_usd: float
     input_tokens: int
     output_tokens: int
@@ -76,17 +85,21 @@ def _breakdown(groups: dict[str, list[tuple[float, float]]]) -> list[Breakdown]:
     return out
 
 
-def gym_pairs(rows: Iterable[MatchRow], mode: str) -> tuple[list[_Obs], list[_Obs], list[dict]]:
-    """Per-side observations, and one record per complete pair: {a, b, opponent, role, cell}."""
+def _groups(rows: Iterable[MatchRow]) -> dict[str, list[MatchRow]]:
     by_pair: dict[str, list[MatchRow]] = defaultdict(list)
     for r in rows:
         if r.status == "done" and r.outcome:
             by_pair[r.meta["pair"]].append(r)
+    return by_pair
+
+
+def gym_pairs(rows: Iterable[MatchRow], mode: str) -> tuple[list[_Obs], list[_Obs], list[dict]]:
+    """Per-side observations, and one record per complete pair: {a, b, opponent, role, cell}."""
     a_obs, b_obs, pairs = [], [], []
-    for group in by_pair.values():
-        if len(group) != 2:
-            continue                                  # incomplete pair: excluded from paired stats
+    for group in _groups(rows).values():
         if mode == "duel":
+            if len(group) != 2:
+                continue                              # incomplete pair: excluded from paired stats
             a_side, b_side = [], []
             for r in group:
                 a_role = Role(r.meta["a_role"])
@@ -98,6 +111,8 @@ def gym_pairs(rows: Iterable[MatchRow], mode: str) -> tuple[list[_Obs], list[_Ob
                           "opponent": "-", "role": "both", "cell": group[0].meta["cell"]})
         else:
             by_subject = {r.meta["subject"]: r for r in group}
+            if "a" not in by_subject or "b" not in by_subject:
+                continue
             role = Role(group[0].meta["role"])
             oa, ob = _obs(by_subject["a"], role), _obs(by_subject["b"], role)
             a_obs.append(oa)
@@ -105,6 +120,21 @@ def gym_pairs(rows: Iterable[MatchRow], mode: str) -> tuple[list[_Obs], list[_Ob
             pairs.append({"a": oa.share, "b": ob.share, "opponent": group[0].meta["opponent"],
                           "role": role.value, "cell": group[0].meta["cell"]})
     return a_obs, b_obs, pairs
+
+
+def challenger_pairs(rows: Iterable[MatchRow]) -> dict[str, list[tuple[_Obs, _Obs]]]:
+    """Benchmark mode: for each subject other than B, its result and B's on every pair both finished."""
+    out: dict[str, list[tuple[_Obs, _Obs]]] = defaultdict(list)
+    for group in _groups(rows).values():
+        by_subject = {r.meta["subject"]: r for r in group}
+        if "b" not in by_subject:
+            continue
+        role = Role(group[0].meta["role"])
+        ob = _obs(by_subject["b"], role)
+        for subject, r in by_subject.items():
+            if subject != "b":
+                out[subject].append((_obs(r, role), ob))
+    return out
 
 
 async def build_gym_report(store: Store, run_id: str) -> GymReport:
@@ -117,6 +147,15 @@ async def build_gym_report(store: Store, run_id: str) -> GymReport:
     a_label = run.config.get("a", {}).get("name") or _label(run.config.get("a", {}))
     b_label = run.config.get("b", {}).get("name") or _label(run.config.get("b", {}))
     a_obs, b_obs, pairs = gym_pairs(rows, mode)
+    labels = {"a": a_label, **{f"a{n}": spec.get("name") or _label(spec)
+                               for n, spec in enumerate(run.config.get("extra", []), start=2)}}
+    challengers = []
+    if mode == "benchmark":
+        for subject, obs in sorted(challenger_pairs(rows).items(), key=lambda kv: _subject_order(kv[0])):
+            challengers.append(ChallengerStats(
+                subject=subject, side=_side(labels.get(subject, subject), [c for c, _ in obs]),
+                reference=_side(b_label, [r for _, r in obs]),
+                diff=paired_test([c.share - r.share for c, r in obs])))
 
     def group(key: str) -> dict[str, list[tuple[float, float]]]:
         g: dict[str, list[tuple[float, float]]] = defaultdict(list)
@@ -132,6 +171,7 @@ async def build_gym_report(store: Store, run_id: str) -> GymReport:
         by_opponent=_breakdown(group("opponent")) if mode == "benchmark" else [],
         by_role=_breakdown(group("role")) if mode == "benchmark" else [],
         by_cell=_breakdown(group("cell")),
+        challengers=challengers,
         cost_usd=progress["cost_usd"], input_tokens=progress["input_tokens"],
         output_tokens=progress["output_tokens"],
     )
@@ -140,3 +180,7 @@ async def build_gym_report(store: Store, run_id: str) -> GymReport:
 def _label(spec: dict) -> str:
     kind, model = spec.get("kind", "?"), spec.get("model")
     return f"{kind}@{model}" if model else kind
+
+
+def _subject_order(subject: str) -> int:
+    return 1 if subject == "a" else int(subject[1:])

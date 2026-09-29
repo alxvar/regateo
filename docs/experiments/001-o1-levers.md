@@ -56,6 +56,37 @@ Opening: the first offer's distance inside the favourable end of the market, as 
 - The digest line "their latest offer is $X better than your walk-away price" may invite settling for anything
   above the limit. Suspect, untested.
 
+### Full bench (run_01a0eec5c2bc5764a1f1, 240 pairs, code at 6324778)
+
+| Variant | Share | vs ref | 95% CI | p | Deal rate | Median share in deals | Deals past own limit |
+|---|---|---|---|---|---|---|---|
+| **o1-v2** | **0.336** | **+0.105** | | **0.0001** | 78% | 0.415 | 11 |
+| o1-informed-v2 | 0.258 | +0.026 | [-0.022, +0.075] | 0.28 | 91% | 0.185 | 10 |
+| o1-qwen (ref) | 0.232 | | | | 78% | 0.291 | 16 |
+
+o1-v2 vs the reference, by slice:
+
+| Slice | v2 | ref | diff | p |
+|---|---|---|---|---|
+| persona:tough | 0.389 | 0.192 | +0.197 | <0.001 |
+| persona:injector | 0.630 | 0.471 | +0.159 | 0.024 |
+| scripted:hardliner | 0.233 | 0.089 | +0.143 | 0.029 |
+| scripted:liar | 0.188 | 0.075 | +0.114 | 0.045 |
+| scripted:injector | 0.168 | 0.153 | +0.016 | 0.82 |
+| persona:manipulator | 0.411 | 0.411 | -0.001 | 0.99 |
+| seller | 0.434 | 0.312 | +0.122 | 0.003 |
+| buyer | 0.239 | 0.152 | +0.087 | 0.008 |
+| deadline known | 0.368 | 0.243 | +0.125 | <0.001 |
+| deadline hidden | 0.305 | 0.220 | +0.084 | 0.039 |
+
+### Conclusion
+
+The strategy prompt (negotiator_system.v2) is worth +0.105 share on standard-v1, broadly across opponents, roles
+and deadline settings, at the same deal rate. Private analysis, Qwen thinking and the per-turn digest each make the
+agent more agreeable and cost value, with or without the strategy prompt. Presence penalty has no effect.
+
 ### Open
 
-- Full bench (exp-001-o1-levers-full): o1-v2 and o1-informed-v2 against the reference, 240 pairs.
+- Promote o1-v2 to reference (pending the promotion rule in docs/04-hill-climbing.md).
+- o1-v2 still closes 11 deals past its own limit: the O2 code veto on top of v2 should remove those.
+- The buyer side still trails the seller side (0.24 vs 0.43).

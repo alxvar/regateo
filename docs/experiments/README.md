@@ -47,4 +47,4 @@ One file per question: `NNN-<question>.md`. Null results count: they stop us fro
 
 | # | Question | Status | Result |
 |---|---|---|---|
-| [001](001-o1-levers.md) | Which no-new-components levers make O1 stronger? | screened; full bench next | Strategy prompt v2 +0.067 (p=0.10); reasoning, thinking and the digest each hurt (-0.09 to -0.15): more deals, less value; presence penalty no effect |
+| [001](001-o1-levers.md) | Which no-new-components levers make O1 stronger? | done | Strategy prompt v2: +0.105 share on the full bench (p=0.0001). Reasoning, thinking and the digest each hurt: more deals, less value. Presence penalty no effect |

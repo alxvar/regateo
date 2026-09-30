@@ -100,6 +100,11 @@ _OFFER_CUE = re.compile(
 )
 
 
+# Version 2: ultimatums that name a price offer it, even when it's the other side's number.
+_OFFER_CUE_V2 = re.compile(r"\b(?:take it or leave it|that's my price|that is my price|last offer|firm at)\b",
+                           re.IGNORECASE)
+
+
 # Refusing a price rather than offering it: "I'm not ready to meet at that level", "$175 is above
 # what I can justify", "too high for me".
 _REFUSAL = re.compile(
@@ -110,8 +115,17 @@ _REFUSAL = re.compile(
 )
 
 
-def rule_reading(m: Message, earlier: Sequence[Message]) -> Reading:
-    """Read `m` with rules. `earlier` must already carry readings (see `with_readings`)."""
+def rule_reading(m: Message, earlier: Sequence[Message], version: int = 1) -> Reading:
+    """Read `m` with rules. `earlier` must already carry readings (see `with_readings`).
+
+    Version 2 (reader `rules-v2`) adds two rules, both from exp-004, where "Take it or leave it: $132"
+    (restating the seller's $132) was read as nothing, and the seller's "Deal." then closed at the
+    buyer's older $112:
+    - An acceptance that names no price never closes at a stale price: if the other side's latest
+      message named amounts and none is their current offer, what it accepts is unclear.
+    - Ultimatums ("take it or leave it: $132") offer the price they name.
+    Reading any restatement of the other side's price as meeting it was tried and rejected: replayed
+    over 3,408 stored matches it turned quotes ("I understand $106 is your budget") into offers."""
     them = other(m.sender)
     standing = standing_offer(earlier, them)
     if m.move.action is not None:
@@ -138,6 +152,9 @@ def rule_reading(m: Message, earlier: Sequence[Message]) -> Reading:
 
     if is_acceptance(m.text):
         if not named:
+            if version >= 2 and standing is not None and _stale(earlier, them, standing):
+                return reading(ReadKind.ACCEPT, None, ambiguous=True,
+                               note="accepts, but their latest message named another price than their offer")
             return reading(ReadKind.ACCEPT, standing, ambiguous=standing is None,
                            note="" if standing is not None else "accepts, but their price is unclear")
         if fresh:
@@ -171,10 +188,20 @@ def rule_reading(m: Message, earlier: Sequence[Message]) -> Reading:
         return reading(ReadKind.OFFER, own[0])                # restating our own offer
     if not own:
         # A refusal of their one price is not an offer of it; with two amounts, it refuses one and offers the other.
-        if _OFFER_CUE.search(m.text) and (len(named) > 1 or not _REFUSAL.search(m.text)):
+        cue = _OFFER_CUE.search(m.text) or (version >= 2 and _OFFER_CUE_V2.search(m.text))
+        if cue and (len(named) > 1 or not _REFUSAL.search(m.text)):
             return reading(ReadKind.OFFER, named[-1], ambiguous=True, note="offers a price they named")
         return reading(ReadKind.NONE, ambiguous=True, note="only restates their price")
     return reading(ReadKind.OFFER, ambiguous=True, note="several new amounts")
+
+
+def _stale(earlier: Sequence[Message], them: Role, standing: float) -> bool:
+    """Their latest message named amounts, and none of them is their standing offer."""
+    latest = next((e for e in reversed(earlier) if e.sender is them), None)
+    if latest is None:
+        return False
+    named = [p.value for p in without_totals([p for p in find_prices(latest.text) if not p.negated])]
+    return bool(named) and not _has(named, standing)
 
 
 def _structured(m: Message, standing: float | None) -> Reading:
@@ -205,10 +232,14 @@ class OfferReader(ABC):
 
 
 class RuleReader(OfferReader):
-    name = "rules"
+    """`version` 1 is reader `rules`, 2 is `rules-v2` (see `rule_reading`). Benches record which."""
+
+    def __init__(self, version: int = 1):
+        self.version = version
+        self.name = "rules" if version == 1 else f"rules-v{version}"
 
     async def read(self, history: Sequence[Message]) -> Reading:
-        return rule_reading(history[-1], history[:-1])
+        return rule_reading(history[-1], history[:-1], self.version)
 
 
 _SYSTEM = """You read one message from a buyer-seller price negotiation and report what it does.

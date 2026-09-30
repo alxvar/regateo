@@ -28,13 +28,16 @@ def build_detector(name: str, judge_llm: JudgeFactory | None = None) -> DealDete
 
 
 def build_reader(name: str, llm: JudgeFactory | None = None) -> OfferReader:
-    """`rules`, `llm:<profile>` (rules, and the model for ambiguous messages), or
+    """`rules`, `rules-v2` (stricter about stale and restated prices), `llm:<profile>` (rules, and the model
+    for ambiguous messages), or
     `shadow:<primary>+<shadow>` (the first decides; the second is recorded on each reading)."""
     if name.startswith("shadow:"):
         primary, shadow = name.removeprefix("shadow:").split("+", 1)
         return ShadowReader(build_reader(primary, llm), build_reader(shadow, llm))
     if name == "rules":
         return RuleReader()
+    if name == "rules-v2":
+        return RuleReader(version=2)
     if name.startswith("llm:"):
         if llm is None:
             raise ValueError("an llm reader needs an LLM factory")

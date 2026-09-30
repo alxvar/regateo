@@ -5,7 +5,7 @@ from regateo.core import Message, ReadKind, Role
 from regateo.llm.errors import LLMTimeout
 from regateo.llm.providers.fake import FakeProvider
 from regateo.referee import LLMReader, RuleReader, ShadowReader, TextDetector, with_readings
-from regateo.referee.reader import _verdict_model
+from regateo.referee.reader import _verdict_model, rule_reading
 from tests.conftest import msg
 
 S, B = Role.SELLER, Role.BUYER
@@ -149,3 +149,46 @@ async def test_audit_scores_rules_and_model_against_intent():
     assert a.labelled == 3 and (a.clear.rules.n, a.clear.rules.correct) == (1, 1)
     assert (a.ambiguous.rules.n, a.ambiguous.rules.correct, a.ambiguous.with_model.correct) == (2, 0, 2)
     assert a.ambiguous.model_calls == 1 and a.mismatches_total == 2
+
+
+def read_all_v2(*texts: str) -> list[Message]:
+    out: list[Message] = []
+    for i, t in enumerate(texts):
+        m = msg(i, B if i % 2 == 0 else S, t)
+        out.append(m.model_copy(update={"reading": rule_reading(m, out, version=2)}))
+    return out
+
+
+# exp-004, pair 0-0-s: the buyer restated the seller's $132, the seller said "Deal.", and rules v1 closed at $112.
+EXP_004 = ["$106. That's already generous.", "I can do $202.", "$112. That's already generous.",
+           "I can meet you at $132. That's my final offer.", "Take it or leave it: $132.", "Deal."]
+
+
+async def test_rules_v2_meets_a_restated_offer():
+    v1 = read_all(*EXP_004)
+    assert (v1[4].reading.kind, (await TextDetector().check(v1)).price) == (ReadKind.NONE, 112)   # the bug
+    v2 = read_all_v2(*EXP_004)
+    assert (v2[4].reading.kind, v2[4].reading.price) == (ReadKind.OFFER, 132)
+    assert (await TextDetector().check(v2)).price == 132
+
+
+async def test_rules_v2_never_accepts_a_stale_price():
+    # their latest message names $132 but reads as no offer (a refusal of ours): a bare "Deal." is unclear
+    h = read_all_v2("$112.", "I can meet you at $132.", "$132 is too much for me.", "Deal.")
+    assert (h[-1].reading.kind, h[-1].reading.price) == (ReadKind.ACCEPT, None)
+    assert await TextDetector().check(h) is None
+    # nothing newer than their offer: a bare "Deal." still closes
+    h = read_all_v2("$150", "$170", "OK, deal.")
+    assert (await TextDetector().check(h)).price == 170
+    # a refusal of their price is still not an offer of it
+    assert read_all_v2("$120?", "$129.", "$129 is too high.")[-1].reading.kind is ReadKind.NONE
+
+
+@pytest.mark.parametrize("texts,kind,price,ambiguous", [
+    (["$150", "$170", "Deal, $170 it is."], ReadKind.ACCEPT, 170, False),
+    (["$120?", "$120 is too low."], ReadKind.NONE, None, True),
+    (["$150", "$170", "Great, we agree at $160!"], ReadKind.OFFER, 160, True),
+])
+def test_rules_v2_keeps_v1_readings(texts, kind, price, ambiguous):
+    r = read_all_v2(*texts)[-1].reading
+    assert (r.kind, r.price, r.ambiguous) == (kind, price, ambiguous)

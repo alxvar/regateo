@@ -26,5 +26,5 @@ scenarios:
   deadline_known: [true]
 protocol: freetext
 detector: text
-reader: shadow:rules+llm:qwen-local     # same reading as standard-v1
+reader: shadow:rules-v2+llm:qwen-local  # same reading as standard-v2
 seed: 17

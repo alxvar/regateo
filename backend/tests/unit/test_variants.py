@@ -181,3 +181,20 @@ def test_promotion_checks():
     worse = c.model_copy(update={"side": side(70, past=2), "diff": paired_test([-0.01, 0.02] * 20)})
     status = {k.name: k.status for k in promotion_checks(worse, purpose="holdout", tier=None)}
     assert status["gain"] == "pass" and status["limit"] == "fail" and status["deals"] == "fail"
+
+
+async def test_challenger_breakdowns_and_follow_ups(tmp_path, monkeypatch):
+    _bench(tmp_path, monkeypatch)
+    hard = {"kind": "boulware", "name": "hard", "params": {"boulware": 8}}
+    base = {"bench": "b1", "reference": "boulware"}
+    store = await Store.open(tmp_path / "db")
+    screen, _ = await run_gym(GymSpec.model_validate({**base, "name": "s", "tier": "screen",
+                                                      "challengers": [SOFT, hard]}), store)
+    full, _ = await run_gym(GymSpec.model_validate({**base, "name": "f", "challengers": [hard],
+                                                    "source_run": screen}), store)
+    r = await build_gym_report(store, screen)
+    c = r.challengers[1]
+    assert {b.key for b in c.by_role} == {"seller", "buyer"} and len(c.by_cell) == 2
+    assert sum(b.diff.n for b in c.by_opponent) == c.diff.n
+    assert [(f.run_id, f.agents) for f in r.follow_ups] == [(full, ["hard"])]
+    assert (await build_gym_report(store, full)).source_run == screen

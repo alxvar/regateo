@@ -61,7 +61,7 @@ async def climb_round(store: Store, *, from_run: str, parent: str, reference: st
     best = sorted(ahead, key=lambda a: -(screen[labels[a]].diff.mean_diff or 0))[:FULL_BEST]
     if best:
         full = GymSpec.model_validate({"name": f"{out.experiment}-full", "bench": bench, "reference": reference,
-                                       "challengers": best, "early_stop": True,
+                                       "challengers": best, "early_stop": True, "source_run": out.screen_run,
                                        "settings": spec.settings.model_dump()})
         out.full_run, _ = await run_gym(full, store, on_progress=on_progress)
         report = _by_agent(await build_gym_report(store, out.full_run), full)

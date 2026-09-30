@@ -77,9 +77,21 @@ export interface SideStats {
   label: string; matches: number; mean_share: Estimate; deal_rate: Estimate; past_reservation: number; errors: number;
 }
 export interface Breakdown { key: string; a: Estimate; b: Estimate; diff: Paired }
+/** One promotion check (docs/04-hill-climbing.md §3.1). */
+export interface Check { name: "gain" | "limit" | "deals" | "opponents"; status: "pass" | "fail" | "warn" | "n/a"; detail: string }
+/** A benchmark challenger against the reference, on the pairs both finished. */
+export interface ChallengerStats {
+  subject: string; side: SideStats; reference: SideStats; diff: Paired;
+  by_opponent: Breakdown[]; by_role: Breakdown[]; by_cell: Breakdown[];
+  stopped_at: number | null;   // early stopping dropped it after this many pairs
+  checks: Check[];
+}
+export interface FollowUp { run_id: string; name: string; agents: string[] }
 export interface GymReport {
   run_id: string; name: string; mode: "duel" | "benchmark"; status: string; total: number | null; done: number;
+  purpose: "dev" | "holdout"; tier: string | null; source_run: string | null; follow_ups: FollowUp[];
   a: SideStats; b: SideStats; diff: Paired; by_opponent: Breakdown[]; by_role: Breakdown[]; by_cell: Breakdown[];
+  challengers: ChallengerStats[];   // benchmark: every challenger vs the reference (B)
   cost_usd: number; input_tokens: number; output_tokens: number;
 }
 

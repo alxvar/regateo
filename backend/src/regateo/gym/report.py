@@ -42,8 +42,17 @@ class ChallengerStats(BaseModel):
     reference: SideStats             # B on the same pairs
     diff: PairedResult               # paired challenger - B
     by_opponent: list[Breakdown] = []
+    by_role: list[Breakdown] = []
+    by_cell: list[Breakdown] = []
     stopped_at: int | None = None    # early stopping dropped it after this many pairs
     checks: list[Check] = []
+
+
+class FollowUp(BaseModel):
+    """A later gym that took some of this run's challengers further, e.g. a climb round's full bench."""
+    run_id: str
+    name: str
+    agents: list[str]                # challenger labels it ran
 
 
 class GymReport(BaseModel):
@@ -52,6 +61,8 @@ class GymReport(BaseModel):
     mode: str
     purpose: str = "dev"             # dev | holdout: which promotion checks apply
     tier: str | None = None
+    source_run: str | None = None    # the run this one continues (a climb round's screen)
+    follow_ups: list[FollowUp] = []
     status: str
     total: int | None
     done: int
@@ -134,19 +145,20 @@ def gym_pairs(rows: Iterable[MatchRow], mode: str) -> tuple[list[_Obs], list[_Ob
     return a_obs, b_obs, pairs
 
 
-def challenger_pairs(rows: Iterable[MatchRow]) -> dict[str, list[tuple[_Obs, _Obs, str]]]:
+def challenger_pairs(rows: Iterable[MatchRow]) -> dict[str, list[tuple[_Obs, _Obs, dict[str, str]]]]:
     """Benchmark mode: for each subject other than B, its result and B's on every pair both finished,
-    with the opponent."""
-    out: dict[str, list[tuple[_Obs, _Obs, str]]] = defaultdict(list)
+    with the pair's opponent, role and cell."""
+    out: dict[str, list[tuple[_Obs, _Obs, dict[str, str]]]] = defaultdict(list)
     for group in _groups(rows).values():
         by_subject = {r.meta["subject"]: r for r in group}
         if "b" not in by_subject:
             continue
         role = Role(group[0].meta["role"])
         ob = _obs(by_subject["b"], role)
+        keys = {"opponent": group[0].meta["opponent"], "role": role.value, "cell": group[0].meta["cell"]}
         for subject, r in by_subject.items():
             if subject != "b":
-                out[subject].append((_obs(r, role), ob, group[0].meta["opponent"]))
+                out[subject].append((_obs(r, role), ob, keys))
     return out
 
 
@@ -203,14 +215,16 @@ async def build_gym_report(store: Store, run_id: str) -> GymReport:
     challengers = []
     if mode == "benchmark":
         for subject, obs in sorted(challenger_pairs(rows).items(), key=lambda kv: _subject_order(kv[0])):
-            per_opp: dict[str, list[tuple[float, float]]] = defaultdict(list)
-            for c, r, opp in obs:
-                per_opp[opp].append((c.share, r.share))
+            per: dict[str, dict[str, list[tuple[float, float]]]] = defaultdict(lambda: defaultdict(list))
+            for c, r, keys in obs:
+                for dim, key in keys.items():
+                    per[dim][key].append((c.share, r.share))
             stats = ChallengerStats(
                 subject=subject, side=_side(labels.get(subject, subject), [c for c, _, _ in obs]),
                 reference=_side(b_label, [r for _, r, _ in obs]),
                 diff=paired_test([c.share - r.share for c, r, _ in obs]),
-                by_opponent=_breakdown(per_opp), stopped_at=stopped.get(subject))
+                by_opponent=_breakdown(per["opponent"]), by_role=_breakdown(per["role"]),
+                by_cell=_breakdown(per["cell"]), stopped_at=stopped.get(subject))
             stats.checks = promotion_checks(stats, purpose=purpose, tier=tier)
             challengers.append(stats)
 
@@ -220,8 +234,13 @@ async def build_gym_report(store: Store, run_id: str) -> GymReport:
             g[p[key]].append((p["a"], p["b"]))
         return g
 
+    follow_ups = [FollowUp(run_id=r.id, name=r.name, agents=[s.get("name") or _label(s)
+                                                            for s in [r.config["a"], *r.config.get("extra", [])]])
+                  for r in await store.list_runs("gym", limit=1000) if r.config.get("source_run") == run_id]
+
     return GymReport(
         run_id=run_id, name=run.name, mode=mode, purpose=purpose, tier=tier, status=run.status,
+        source_run=run.config.get("source_run"), follow_ups=follow_ups,
         total=progress["total"], done=progress["done"],
         a=_side(a_label, a_obs), b=_side(b_label, b_obs),
         diff=paired_test([p["a"] - p["b"] for p in pairs]),

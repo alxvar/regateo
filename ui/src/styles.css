@@ -177,3 +177,16 @@ svg .label-strong { fill: var(--text-2); }
   .topbar { padding: 10px 16px; gap: 12px; }
   .grid-2 { grid-template-columns: 1fr; }
 }
+
+/* Promotion checks: the icon carries the state's color, the text stays in text ink. */
+.checks { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.check { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 99px;
+  border: 1px solid var(--border); font-size: 12px; color: var(--text-2); white-space: nowrap; cursor: help; }
+.check i { font-style: normal; font-weight: 700; }
+.check.pass i { color: var(--good); }
+.check.fail { border-color: var(--critical); }
+.check.fail i { color: var(--critical); }
+.check.warn i { color: var(--warning); }
+.check.na i { color: var(--muted); }
+tr.selected td { background: var(--surface-2); }
+a.chip { text-decoration: none; }

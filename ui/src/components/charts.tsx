@@ -49,8 +49,11 @@ function Tooltip({ tip }: { tip: Tip | null }) {
 /**
  * Forest plot of paired differences (A − B) with 95% CIs, one row per group.
  * Significant rows (p < 0.05) get a filled dot, others hollow: the verdict never rides on color alone.
+ * With `onSelect`, rows are clickable and `selected` is highlighted.
  */
-export function ForestPlot({ rows, aLabel, bLabel }: { rows: Breakdown[]; aLabel: string; bLabel: string }) {
+export function ForestPlot({ rows, aLabel, bLabel, selected, onSelect }: {
+  rows: Breakdown[]; aLabel: string; bLabel: string; selected?: string; onSelect?: (key: string) => void;
+}) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [tip, setTip] = useState<Tip | null>(null);
   const valid = rows.filter((r) => r.diff.mean_diff != null && r.diff.lo != null && r.diff.hi != null);
@@ -65,17 +68,18 @@ export function ForestPlot({ rows, aLabel, bLabel }: { rows: Breakdown[]; aLabel
   const plotL = labelW + 8;
   const plotR = Math.max(plotL + 40, width - 12);
   const x = (v: number) => plotL + ((v + extent) / (2 * extent)) * (plotR - plotL);
-  const ticks = [-extent, -extent / 2, 0, extent / 2, extent].map((t) => Math.round(t * 100) / 100);
+  const ticks = [-extent, -extent / 2, 0, extent / 2, extent];   // exact positions; labels round
 
   return (
     <div ref={ref} style={{ position: "relative" }} onMouseLeave={() => setTip(null)}>
       {width > 0 && (
         <svg width={width} height={h} role="img" aria-label={`Paired difference ${aLabel} minus ${bLabel} by group`}>
-          {ticks.map((t) => (
+          {ticks.map((t, i) => (
             <g key={t}>
               <line x1={x(t)} x2={x(t)} y1={top} y2={h - bottom} stroke={t === 0 ? "var(--axis)" : "var(--grid)"}
                     strokeWidth={t === 0 ? 1.5 : 1} />
-              <text x={x(t)} y={h - bottom + 16} textAnchor="middle" className="num">{signed(t, 2)}</text>
+              <text x={x(t)} y={h - bottom + 16} className="num"
+                    textAnchor={i === ticks.length - 1 ? "end" : i === 0 ? "start" : "middle"}>{signed(t, 2)}</text>
             </g>
           ))}
           <text x={plotL} y={h - 2} textAnchor="start">← {bLabel} better</text>
@@ -96,13 +100,16 @@ export function ForestPlot({ rows, aLabel, bLabel }: { rows: Breakdown[]; aLabel
                      </div>
                    ) });
                  }}>
-                <rect x={0} y={cy - rowH / 2} width={width} height={rowH} fill="transparent" />
-                <text x={labelW} y={cy + 4} textAnchor="end" className="label-strong">
+                <rect x={0} y={cy - rowH / 2} width={width} height={rowH} rx={6}
+                      fill={selected === r.key ? "var(--surface-2)" : "transparent"}
+                      style={onSelect ? { cursor: "pointer" } : undefined} onClick={() => onSelect?.(r.key)} />
+                <text x={labelW} y={cy + 4} textAnchor="end" className="label-strong" pointerEvents="none"
+                      style={selected === r.key ? { fontWeight: 650 } : undefined}>
                   {r.key.length > 26 ? `${r.key.slice(0, 25)}…` : r.key}
                 </text>
                 <line x1={x(r.diff.lo!)} x2={x(r.diff.hi!)} y1={cy} y2={cy} stroke="var(--text-2)" strokeWidth={2}
-                      strokeLinecap="round" />
-                <circle cx={x(r.diff.mean_diff!)} cy={cy} r={5} strokeWidth={2} stroke="var(--text)"
+                      strokeLinecap="round" pointerEvents="none" />
+                <circle cx={x(r.diff.mean_diff!)} cy={cy} r={5} strokeWidth={2} stroke="var(--text)" pointerEvents="none"
                         fill={sig ? "var(--text)" : "var(--surface)"} />
               </g>
             );

@@ -47,6 +47,7 @@ class GymSpec(ExperimentSpec):
     tiers: dict[str, int] = Field(default_factory=dict)     # tier name -> scenarios per cell
     purpose: Literal["dev", "holdout"] = "dev"               # set by the bench; decides the promotion checks
     early_stop: EarlyStop | None = None                       # benchmark only: stop clear losers (gym.early)
+    source_run: str | None = None                             # the run this one continues, e.g. a climb screen
 
     @model_validator(mode="before")
     @classmethod

@@ -4,7 +4,7 @@ import pytest
 from regateo.agents import AgentSpec, prompts
 from regateo.climb import propose as prop
 from regateo.climb.mine import mine
-from regateo.climb.propose import Proposal, Proposals, ask, validate, write, write_experiment
+from regateo.climb.propose import PromptEdit, Proposal, Proposals, ask, validate, write, write_experiment
 from regateo.gym import GymSpec, run_gym
 from regateo.llm.providers.fake import FakeProvider
 from regateo.storage import Store
@@ -38,17 +38,19 @@ def test_validate(configs):
     assert any("nothing" in r for r in validate(Proposal(name="idle", failure="f", hypothesis="h"), parent, set()))
     assert any("slug" in r for r in validate(ok.model_copy(update={"name": "Firm Close"}), parent, set()))
     assert any("already" in r for r in validate(ok.model_copy(update={"model": "qwen-local"}), parent, set()))
-    missing = ok.model_copy(update={"prompt": V1.replace("$reservation", "your limit")})
+    missing = ok.model_copy(update={"prompt_edit": PromptEdit(find="$reservation", replace="your limit")})
     assert any("missing ['reservation']" in r for r in validate(missing, parent, set()))
-    priced = ok.model_copy(update={"prompt": V1 + "\nNever open below $150 or 20%."})
+    absent = ok.model_copy(update={"prompt_edit": PromptEdit(find="no such passage", replace="x")})
+    assert any("occurs 0 times" in r for r in validate(absent, parent, set()))
+    priced = ok.model_copy(update={"prompt_edit": PromptEdit(find="", replace="Never open below $150 or 20%.")})
     assert validate(priced, parent, set()) == []                # "$150" is escaped, not a placeholder
 
 
 def test_write(configs):
-    new_prompt = V1 + "\nClose early when their offer is within 5% of $1,000."
     written, rejected = write([
         Proposal(name="guard", failure="deals past limit", hypothesis="h1", checks="limit"),
-        Proposal(name="close-early", failure="round-limit no-deals", hypothesis="h2", prompt=new_prompt),
+        Proposal(name="close-early", failure="round-limit no-deals", hypothesis="h2",
+                 prompt_edit=PromptEdit(find="", replace="Close early when their offer is within 5% of $1,000.")),
         Proposal(name="nothing", failure="f", hypothesis="h3"),
     ], "o1/base")
     assert [w.agent for w in written] == ["o2/guard", "o1/close-early"] and rejected[0].proposal.name == "nothing"
@@ -56,7 +58,8 @@ def test_write(configs):
     assert guard.kind == "o2" and guard.params == {"checks": "limit"}
     early = AgentSpec.resolve("o1/close-early")
     assert early.params == {"prompt": "negotiator_system.v2"} and written[1].prompt_file == "negotiator_system.v2.md"
-    assert "$$1,000" in (configs / "prompts" / "negotiator_system.v2.md").read_text()
+    v2 = (configs / "prompts" / "negotiator_system.v2.md").read_text()
+    assert v2.startswith(V1.rstrip("\n")) and v2.endswith("within 5% of $$1,000.\n")
     assert "hypothesis: h2" in (configs / "agents" / "o1" / "close-early.yaml").read_text().lower()
     name = write_experiment(written, reference="o1/base", bench="standard-v1", source_run="run_x")
     assert name == "exp-008-climb"

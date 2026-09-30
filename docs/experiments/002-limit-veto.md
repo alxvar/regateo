@@ -57,9 +57,18 @@ limit-quiet against o1-v2 directly (paired): +0.048 [-0.006, +0.103], p=0.084.
 - Gain: pass (+0.153, p<0.0001). Limit: pass (0). Opponents: pass.
 - **Deals: fails as the rule is written** (73.8% vs 77.5%, more than 2 points down). It passes if the rule counts only
   deals within the agent's own limit (73.8% vs 70.8%). Decision needed: see "Open".
-- Holdout: see below.
+- Holdout (run_01a0f1815bcc0b7f1097, holdout-v1, 144 pairs): **+0.131** [+0.052, +0.210], p=0.0017. Same direction,
+  and significant on its own; ahead against all six unseen opponents (most against the anchoring persona, +0.385, and
+  boulware, +0.182). Deal rate 75% vs 80%. **2 deals past its own limit**, both against the scripted staller, and both
+  referee misreads, not veto failures: the agent wrote "Take your time… ready to ship the moment we agree" and "…I'm
+  confident it's a solid deal for the right person", meaning to chat, and the rules reader took each as a clear
+  acceptance of the staller's lowball. Only these two matches were read, to classify the failure.
 
 ### Open
 
 - Should the deal-rate check count only deals within the agent's own limit? A past-limit deal scores negative and is a
   hard fail anyway, so counting it as a "deal" in the deal-rate check rewards the thing the limit check forbids.
+- The reader takes "deal" and "agree" in a non-accepting message as an acceptance. A tournament platform reading free
+  text may do the same, so this is a requirement M2 risk ("never close a deal by accident"). Two fixes, possibly both:
+  make the reader stricter (a referee change, so a new bench version), and have the veto reject acceptance words in a
+  message that doesn't accept (an agent change, testable now as the next experiment).

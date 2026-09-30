@@ -9,7 +9,7 @@ Propose exactly $n challengers. Each one:
 - has a hypothesis we could be wrong about: what will improve, and why.
 
 The levers you can pull:
-- prompt: a complete new version of the prompt template. Keep every placeholder exactly as written ($$role, $$item, $$reservation, $$walkaway_rule, $$market_low, $$market_high, $$extra_info, $$protocol, $$persona): code fills them in. Don't add new ones, and don't write a dollar sign anywhere else (write "USD 150", or no number at all). Change what the bundle suggests and keep the rest word for word; the fewer changes, the clearer the result.
+- prompt_edit: one edit to the prompt template. Either replace a passage: `find` is text copied exactly from the current prompt (one sentence or bullet is best), `replace` is its new version. Or add a rule: leave `find` empty and put the new rule in `replace`; it goes at the end. Keep placeholders such as $$reservation exactly as written, don't add new ones, and don't write a dollar sign anywhere else (write "USD 150", or no number at all).
 - analysis: true to have the model write private notes before each decision.
 - state_digest: true to add a private summary of the offers so far to each turn.
 - fence: true to wrap the other side's messages in random tags, against injected instructions.

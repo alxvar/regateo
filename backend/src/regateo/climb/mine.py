@@ -19,7 +19,7 @@ from regateo.core.outcome import Outcome
 from regateo.core.roles import Role, other
 from regateo.storage.store import MatchRow, Store
 
-MAX_CHARS = 300          # per message in a transcript: keeps a bundle inside a local model's context
+MAX_CHARS = 240          # per message in a transcript: keeps a bundle inside a local model's context
 
 
 class Bundle(BaseModel):

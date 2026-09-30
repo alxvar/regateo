@@ -25,14 +25,20 @@ from regateo.llm.types import ChatMessage, LLMRequest
 
 PROPOSER_PROMPT = "proposer_system.v1"
 MODELS = ("qwen-local", "qwen-local-think", "qwen-local-pp0")
+TRIED_MAX = 15                        # latest climb results shown to the proposer: its context is small
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
+
+
+class PromptEdit(BaseModel):
+    find: str = Field(description="exact passage of the current prompt to replace; empty to add a new rule at the end")
+    replace: str = Field(description="the new text")
 
 
 class Proposal(BaseModel):
     name: str = Field(description="short slug: lowercase letters, digits and dashes")
     failure: str = Field(description="the failure pattern it targets, quoting the bundle")
     hypothesis: str = Field(description="what will improve, and why")
-    prompt: str | None = Field(default=None, description="complete new prompt template, or null")
+    prompt_edit: PromptEdit | None = Field(default=None, description="one edit to the prompt, or null")
     analysis: bool | None = None
     state_digest: bool | None = None
     fence: bool | None = None
@@ -68,7 +74,7 @@ def tried() -> str:
     if log_path().exists():
         rows = [json.loads(line) for line in log_path().read_text().splitlines() if line.strip()]
         parts += [f"- {r['agent']}: {r['hypothesis']} Changes: {r['changes']}. Result: {r.get('result', 'pending')}"
-                  for r in rows]
+                  for r in rows[-TRIED_MAX:]]
     return "\n".join(parts) or "Nothing yet."
 
 
@@ -89,7 +95,31 @@ def _escape(text: str) -> str:
 def _changes(p: Proposal) -> dict:
     params = {k: v for k in ("analysis", "state_digest", "fence", "checks") if (v := getattr(p, k)) is not None}
     return {"params": params, **({"model": p.model} if p.model else {}),
-            **({"prompt": "new version"} if p.prompt else {})}
+            **({"prompt_edit": p.prompt_edit.model_dump()} if p.prompt_edit else {})}
+
+
+def edited_prompt(p: Proposal, parent: AgentSpec) -> tuple[str | None, list[str]]:
+    """The parent's prompt template with the proposal's edit applied, or the reasons it can't be."""
+    if not p.prompt_edit:
+        return None, []
+    old = prompts.path(parent.params.get("prompt", "negotiator_system.v1")).read_text()
+    edit = p.prompt_edit
+    if not edit.replace.strip():
+        return None, ["the prompt edit's replacement is empty"]
+    if edit.find.strip():
+        n = old.count(edit.find)
+        if n != 1:
+            return None, [f"the prompt edit's passage occurs {n} times in the prompt, not once"]
+        new = old.replace(edit.find, _escape(edit.replace))
+    else:
+        new = old.rstrip("\n") + "\n" + _escape(edit.replace).strip() + "\n"
+    got = Template(new)
+    if not got.is_valid():
+        return None, ["the edit has a stray $ that isn't a placeholder"]
+    want, have = set(Template(old).get_identifiers()), set(got.get_identifiers())
+    if have != want:
+        return None, [f"prompt placeholders differ: missing {sorted(want - have)}, unknown {sorted(have - want)}"]
+    return new, []
 
 
 def validate(p: Proposal, parent: AgentSpec, taken: set[str]) -> list[str]:
@@ -99,23 +129,13 @@ def validate(p: Proposal, parent: AgentSpec, taken: set[str]) -> list[str]:
     if p.name in taken:
         reasons.append(f"name {p.name!r} is taken")
     ch = _changes(p)
-    if not ch["params"] and "model" not in ch and "prompt" not in ch:
+    if not ch["params"] and "model" not in ch and "prompt_edit" not in ch:
         reasons.append("changes nothing")
     if p.model and p.model == parent.model:
         reasons.append(f"model is already {p.model}")
     if p.checks and parent.kind not in ("o1", "o2"):
         reasons.append(f"checks need an o1 or o2 parent, not {parent.kind}")
-    if p.prompt:
-        own = parent.params.get("prompt", "negotiator_system.v1")
-        want = set(Template(prompts.path(own).read_text()).get_identifiers())
-        got = Template(_escape(p.prompt))
-        if not got.is_valid():
-            reasons.append("the prompt has a stray $ that isn't a placeholder")
-        else:
-            have = set(got.get_identifiers())
-            if have != want:
-                missing, extra = sorted(want - have), sorted(have - want)
-                reasons.append(f"prompt placeholders differ: missing {missing}, unknown {extra}")
+    reasons += edited_prompt(p, parent)[1]
     return reasons
 
 
@@ -138,11 +158,12 @@ def write(proposals: list[Proposal], parent_name: str) -> tuple[list[Written], l
         ch = _changes(p)
         params = dict(ch["params"])
         prompt_file = None
-        if p.prompt:
+        text, _ = edited_prompt(p, parent)
+        if text is not None:
             family = re.sub(r"\.v\d+$", "", parent.params.get("prompt", "negotiator_system"))
             ref = _next_prompt_version(family)
             path = prompts.path(f"{family}.v1").parent / f"{ref}.md"
-            path.write_text(_escape(p.prompt).strip() + "\n")
+            path.write_text(text)
             params["prompt"] = ref
             prompt_file = path.name
         data: dict = {"extends": parent_name}

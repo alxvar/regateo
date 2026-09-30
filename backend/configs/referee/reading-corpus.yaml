@@ -267,3 +267,20 @@ cases:
   kind: accept
   price: 170
   source: clear acceptance
+- messages:
+  - $120.
+  - I'm barely moving. $184.
+  - $184 is well above the comparable range for this bike and doesn't reflect its condition. I'm not able to move
+    on that number.
+  - Accepted, $184 it is.
+  kind: none
+  price: null
+  source: 'exp-001/002 dev, scripted liar ''accepts'' its own price: reader-eval, fast llm-first read accept'
+- messages:
+  - I can do $112.
+  - $112 is still too low. I can meet you at $110, but that's my absolute final offer. If you want the bike, take
+    it; otherwise, I'll keep looking.
+  - Deal. $110 it is.
+  kind: accept
+  price: 110
+  source: 'exp-002 dev: text accepts the seller''s $110 (the agent''s recorded intent said ''message'')'

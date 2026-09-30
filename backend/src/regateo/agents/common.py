@@ -72,11 +72,12 @@ def safe_fallback(obs: Observation, reason: str) -> Move:
     )
 
 
-def state_digest(obs: Observation, *, structured: bool) -> str:
+def state_digest(obs: Observation, *, structured: bool, moves_only: bool = False) -> str:
     """A private summary of where the negotiation stands, added to the model's turn so it doesn't
     have to rebuild the numbers from free text. Their offers are read with the referee's rules
     (which skip prices they merely quote); under free text we only use their words, as a real
-    opponent's structured intent wouldn't reach us."""
+    opponent's structured intent wouldn't reach us. `moves_only` leaves out how their offer compares
+    with our walk-away price, which may invite settling for anything above it."""
     v, me = obs.view, obs.view.role
     s = sign(me)
     f = lambda p: fmt_price(p, v.currency)  # noqa: E731
@@ -98,7 +99,7 @@ def state_digest(obs: Observation, *, structured: bool) -> str:
         moves.append(f"you moved {f(abs(ours[-1] - ours[-2]))} toward them")
     if moves:
         lines.append(f"- Last moves: {'; '.join(moves)}")
-    if theirs:
+    if theirs and not moves_only:
         margin = s * (theirs[-1] - v.reservation)
         where = "better than" if margin > 0 else "worse than" if margin < 0 else "exactly"
         lines.append(f"- Their latest offer {f(theirs[-1])} is {f(abs(margin)) + ' ' if margin else ''}{where} "

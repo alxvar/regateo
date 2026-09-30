@@ -1,0 +1,3 @@
+# Both: the concrete reciprocity rule, and the moves it needs, computed for the model.
+extends: baseline
+params: {prompt: negotiator_system.v3, state_digest: moves}

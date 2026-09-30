@@ -42,7 +42,7 @@ class Proposal(BaseModel):
     hypothesis: str = Field(description="what will improve, and why")
     prompt_edit: PromptEdit | None = Field(default=None, description="one edit to the prompt, or null")
     analysis: bool | None = None
-    state_digest: bool | None = None
+    state_digest: bool | Literal["moves"] | None = None
     fence: bool | None = None
     checks: Literal["limit", "limit+mentions", "all"] | None = None
     accept_words: Literal["reader", "strict"] | None = None

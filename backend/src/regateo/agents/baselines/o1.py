@@ -52,7 +52,8 @@ class EndToEndAgent:
     - `prompt`: system prompt, `name.vN` (default negotiator_system.v1).
     - `analysis`: true (or a prompt ref) to have the model write private analysis before deciding;
       the instructions in analysis_instructions.v1 are added to the system prompt.
-    - `state_digest`: true to add a private summary of the offers so far to each turn (common.state_digest).
+    - `state_digest`: true to add a private summary of the offers so far to each turn (common.state_digest);
+      "moves" for the same without how their offer compares with the walk-away price.
     - `persona` (prompt name, e.g. "tough"), `fence` (wrap opponent text in per-turn random tags),
       `effort`, `max_tokens`."""
 
@@ -131,8 +132,8 @@ class EndToEndAgent:
                 price = f" {fmt_price(m.move.price, obs.view.currency)}" if m.move.price is not None else ""
                 text = f"[{m.move.action.value}{price}]\n{text}"
             out.append(ChatMessage(role="user", content=f"[message {m.idx + 1}] {text}"))
-        if self.params.get("state_digest"):
-            digest = state_digest(obs, structured=self.ctx.protocol.structured)
+        if digest_mode := self.params.get("state_digest"):
+            digest = state_digest(obs, structured=self.ctx.protocol.structured, moves_only=digest_mode == "moves")
             out[-1] = ChatMessage(role="user", content=f"{out[-1].content}\n\n{digest}")
         if feedback:
             last = out[-1]

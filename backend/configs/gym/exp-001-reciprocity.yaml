@@ -1,0 +1,9 @@
+# Experiment 001: the baseline concedes more than its opponent in two thirds of its moves, against the
+# prompt's own rule. Does making the rule concrete, or showing the model the moves, keep more value?
+name: exp-001-reciprocity
+bench: standard-v1
+reference: baseline
+challengers: [b1/reciprocity, b1/moves, b1/reciprocity-moves]
+halving: true
+early_stop: true
+settings: {concurrency: 32, cache: readwrite}

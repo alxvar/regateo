@@ -1,0 +1,3 @@
+# The baseline with a private per-turn summary of offers and moves, without the walk-away comparison.
+extends: baseline
+params: {state_digest: moves}

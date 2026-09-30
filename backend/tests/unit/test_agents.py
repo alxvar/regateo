@@ -80,6 +80,12 @@ async def test_o1_state_digest():
     await build_agent(AgentSpec(kind="o1", model="fake"), S.view_for(Role.SELLER),
                       ctx(Role.SELLER, plain, "freetext")).respond(obs(Role.SELLER, history))
     assert plain.requests[0].messages[-1].content == "[message 4] OK, I'll go to $125."   # off by default
+    moves = FakeProvider([Decision(action="offer", price=150, message="$150")])
+    await build_agent(AgentSpec(kind="o1", model="fake", params={"state_digest": "moves"}), S.view_for(Role.SELLER),
+                      ctx(Role.SELLER, moves, "freetext")).respond(obs(Role.SELLER, history))
+    digest = moves.requests[0].messages[-1].content.split("\n\n", 1)[1]
+    assert "they moved $15 toward you; you moved $10 toward them" in digest
+    assert "walk-away" not in digest
 
 
 async def test_o1_falls_back_on_model_error():

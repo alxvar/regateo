@@ -192,7 +192,8 @@ Up to 8 challengers, each in `candidates/<name>/` (name: a short slug, lowercase
 
 Levers for `changes`:
 - `analysis: true`: the model writes private notes before each decision.
-- `state_digest: true`: a private summary of the offers so far is added to each turn.
+- `state_digest: true`: a private summary of the offers so far is added to each turn; `moves` leaves out how their
+  offer compares with the walk-away price.
 - `fence: true`: the other side's messages are wrapped in random tags, against injected instructions.
 - `checks`: code veto: `limit` (never offer or accept past the walk-away price), `limit+mentions` (also never write
   a price past it), `all` (also no walking back offers, no prices other than ours and theirs).

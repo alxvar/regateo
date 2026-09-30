@@ -1,0 +1,13 @@
+# Climb round (docs/experiments/003-climb.md), proposed from run_01a0f16d1940f5f62934.
+name: exp-003-climb
+bench: standard-v1
+tier: screen
+reference: o2/v2-limit-quiet
+challengers:
+- o2/accept-tolerance
+- o2/no-echo
+- o2/fence-injector
+early_stop: true
+settings:
+  concurrency: 32
+  cache: readwrite

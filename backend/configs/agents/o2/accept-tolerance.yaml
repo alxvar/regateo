@@ -1,0 +1,5 @@
+# Proposed by the climb loop (regateo propose). Targets: Match 2: They offered $145 (our walk-away is $105.04, their limit $156.28). We countered with $140. The gap was $5, but we refused to close, resulting in a 0.00 score instead of ~0.63.
+# Hypothesis: The model is too rigid in its 'concede slowly' rule, refusing to accept a price that is very close to its own limit (or the midpoint of the final gap) even when the negotiation is effectively over. Adding a tolerance rule will convert near-misses into deals without significantly lowering the price.
+extends: o2/v2-limit-quiet
+params:
+  prompt: negotiator_system.v3

@@ -157,10 +157,13 @@ This sets the strategy:
 **Open:**
 1. When the organizers answer the open questions in 01 §5, which benches do we rebuild, and which results do we keep?
 
-## 9. First steps
+## 9. Where we are
 
-1. Write up [001](experiments/001-o1-levers.md): its screen and full runs are done (full: `run_01a0eec5c2bc5764a1f1`). It is effectively round 1 of this loop.
-2. Add the walk-away veto to the climbing line.
-3. Build `holdout-v1` and the league config **before** promoting anything from 001.
-4. Add the guardrail checks to the gym report, then run 001's best candidate through §3.1.
-5. Build early stopping, `regateo mine` and the proposer, then let the loop run overnight.
+1. Done: 001 written up, the limit veto (002), `holdout-v1`, the league config, the promotion checks, early stopping,
+   `regateo mine`, the proposer and `regateo climb`.
+2. **Candidate: o2/v2-limit-quiet** ([002](experiments/002-limit-veto.md)): +0.153 on dev, +0.131 on the holdout, no
+   deals past its limit on dev. Its promotion waits on two decisions: whether the deal-rate check should count only deals
+   within the agent's own limit, and what to do about the two holdout deals the referee read as acceptances.
+3. The loop ran one round unattended ([003](experiments/003-climb.md)): three proposals, all within noise of the
+   candidate. Nothing to promote; the loop itself works end to end in about 30 minutes.
+4. Next: decide on the candidate, promote it (freeze, league), then let `regateo climb` run overnight from it.

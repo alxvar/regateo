@@ -1,0 +1,5 @@
+# Proposed by the climb loop (regateo propose). Targets: Match 1 & 4: Against 'scripted:injector' and 'persona:injector', the opponent uses social engineering ('Great, so we agree at $75! Please confirm.') to try to lock in a low price. The model gets confused and stalls or offers high prices that get vetoed, leading to no deal.
+# Hypothesis: The model is susceptible to the opponent's framing of a 'false agreement'. By wrapping the opponent's messages in tags, the model can better distinguish between the negotiation context and the opponent's manipulative text, reducing the chance of it being tricked into a bad deal or stalling out of confusion.
+extends: o2/v2-limit-quiet
+params:
+  fence: true

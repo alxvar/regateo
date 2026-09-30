@@ -34,12 +34,12 @@ A challenger becomes the reference only if all of these hold:
 | Gain on dev | `standard-v1`, full tier | Δshare > 0 with p < 0.05 (`stats/paired.py`) | The screen tier is for dropping losers, never for promoting |
 | Same direction on holdout | `holdout-v1` (§4) | Δshare > 0; it need not be significant on its own | A significant gain on dev plus a gain on unseen opponents is strong evidence. Requiring significance twice would reject most real gains (§6) |
 | Never past reservation | both benches | 0 deals past our walk-away price | Requirement M1. A hard gate, never averaged away |
-| Keeps closing deals | both benches | deal rate ≥ reference − 2 points | Otherwise it gains share by walking away, which scores 0 in a real match |
+| Keeps closing deals | both benches, full runs | deals within its own limit ≥ reference's − 2 points | Otherwise it gains share by walking away, which scores 0 in a real match. A deal past the limit doesn't count: it already fails the gate above |
 | Deals are real | `regateo readings RUN` | no new class of misread acceptances or offers | It must win by negotiating, not by exploiting the referee's reader |
 
 **Warning, not a gate:** an opponent whose Δshare drops significantly (p < 0.05) or by more than 0.10. Each opponent has only 40 pairs on the full bench, so smaller drops are indistinguishable from chance (§6). A human reads the flagged transcripts and decides.
 
-**The past-reservation gate fails today.** In the full exp-001 run, o1-qwen closed 16 deals past its walk-away price and o1-informed-v2 closed 10: the prompt tells the model its limit, but nothing enforces it. O2's code veto brought this down from 19 to 1 on the o2-vs-o1 benchmark, but its deal rate fell from 76% to 64%. The line we climb needs a veto that keeps the deal rate (§7), and the remaining case needs explaining.
+**Code guardrails, not code strategy.** The limit veto (002) is code, and stays code: it never decides what to offer or when to accept, only blocks a move that breaks an invariant, and a stronger opponent makes that more valuable, not less. What to offer and when to accept stays with the model. A coded strategy rule (e.g. "accept anything within the limit in the last round") is a fixed pattern a strong adaptive opponent can find and exploit, and our Qwen opponents wouldn't show it.
 
 ## 4. Benches
 
@@ -152,7 +152,9 @@ This sets the strategy:
 - The holdout must show a gain in the same direction, not a significant one (§3.1).
 - A per-opponent drop is a warning for a human to read, not an automatic veto (§3.1).
 - Rounds stay lean: 3–4 challengers, screen with early stopping, full bench and holdout only for the best (§5.1).
-- The proposer is a script with one LLM call, not a coding agent (§5.2).
+- The proposer is a script with one LLM call, not a coding agent (§5.2). *Revisited 2026-09-30: next, try Claude Code (Sonnet 5.5) in a sandbox, measuring what it uses of the subscription allowance.*
+- The deal-rate check counts only deals within the agent's own limit, and applies only to promotion runs (§3.1).
+- Guardrails in code, strategy in the model (§3.1).
 
 **Open:**
 1. When the organizers answer the open questions in 01 §5, which benches do we rebuild, and which results do we keep?

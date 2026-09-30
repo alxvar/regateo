@@ -75,6 +75,7 @@ export interface MatchDetail {
 
 export interface SideStats {
   label: string; matches: number; mean_share: Estimate; deal_rate: Estimate; past_reservation: number; errors: number;
+  clean_deal_rate?: Estimate | null;   // deals within its own limit
 }
 export interface Breakdown { key: string; a: Estimate; b: Estimate; diff: Paired }
 /** One promotion check (docs/04-hill-climbing.md §3.1). */

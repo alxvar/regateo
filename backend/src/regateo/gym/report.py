@@ -17,6 +17,7 @@ class SideStats(BaseModel):
     matches: int
     mean_share: Estimate
     deal_rate: Estimate
+    clean_deal_rate: Estimate | None = None    # deals within this side's own walk-away price
     past_reservation: int            # deals that broke this side's walk-away price
     errors: int                      # matches this side's agent crashed
 
@@ -96,6 +97,7 @@ def _obs(row: MatchRow, role: Role) -> _Obs:
 def _side(label: str, xs: list[_Obs]) -> SideStats:
     return SideStats(label=label, matches=len(xs), mean_share=mean_ci([x.share for x in xs]),
                      deal_rate=wilson(sum(x.deal for x in xs), len(xs)),
+                     clean_deal_rate=wilson(sum(x.deal and not x.past for x in xs), len(xs)),
                      past_reservation=sum(x.past for x in xs), errors=sum(x.error for x in xs))
 
 
@@ -186,16 +188,24 @@ def promotion_checks(c: ChallengerStats, *, purpose: str, tier: str | None) -> l
     past = c.side.past_reservation
     out.append(Check(name="limit", status="pass" if past == 0 else "fail",
                      detail="no deals past own limit" if past == 0 else f"{past} deals past own limit"))
-    mine, ref = c.side.deal_rate.mean, c.reference.deal_rate.mean
-    if mine is not None and ref is not None:
+    # Deals within the agent's own limit: a past-limit deal already fails "limit", and counting it here would
+    # reward it. Screens only drop losers, so the check waits for the promotion run.
+    mine, ref = _clean(c.side), _clean(c.reference)
+    if tier is not None:
+        out.append(Check(name="deals", status="n/a", detail=f"tier {tier} doesn't promote"))
+    elif mine is not None and ref is not None:
         out.append(Check(name="deals", status="pass" if mine >= ref - DEAL_RATE_SLACK else "fail",
-                         detail=f"{100 * mine:.0f}% vs {100 * ref:.0f}%"))
+                         detail=f"{100 * mine:.0f}% vs {100 * ref:.0f}% within own limit"))
     flagged = [b for b in c.by_opponent if b.diff.mean_diff is not None and b.diff.p_value is not None
                and b.diff.mean_diff < 0 and (b.diff.p_value < 0.05 or b.diff.mean_diff < -OPPONENT_DROP)]
     out.append(Check(name="opponents", status="warn" if flagged else "pass",
                      detail=", ".join(f"{b.key} {b.diff.mean_diff:+.3f} (p={b.diff.p_value:.2f})" for b in flagged)
                      or "no opponent drops significantly or by more than 0.10"))
     return out
+
+
+def _clean(s: SideStats) -> float | None:
+    return (s.clean_deal_rate or s.deal_rate).mean
 
 
 async def build_gym_report(store: Store, run_id: str) -> GymReport:

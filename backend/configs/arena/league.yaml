@@ -5,6 +5,7 @@ name: league
 roster:
   - o1-qwen                  # reference until the first promotion
   - o1/v2
+  - o2/v2-limit-quiet        # champion 1 (experiment 002)
   - o2-qwen
   - boulware
   - {kind: "persona:tough", model: qwen-local, name: tough-qwen}

@@ -2,7 +2,8 @@
 
 One file per question: `NNN-<question>.md`. Null results count: they stop us from testing the same idea twice.
 
-**Current reference:** `o1-qwen` on bench `standard-v1`.
+**Current reference:** `o2/v2-limit-quiet` on bench `standard-v1`, promoted 2026-09-30 from [002](002-limit-veto.md)
+(`o1-qwen` before).
 
 ## How to run a variant
 
@@ -34,7 +35,8 @@ One file per question: `NNN-<question>.md`. Null results count: they stop us fro
 The rule and its reasons are in [04-hill-climbing.md §3.1](../04-hill-climbing.md). For the best candidate:
 
 1. **Dev, full tier.** In the gym report's "Promotion checks", the candidate reads `candidate`: gain significant,
-   no deals past its own limit, deal rate no more than 2 points below the reference. Read any `warn` rows' transcripts.
+   no deals past its own limit, deals within its own limit no more than 2 points below the reference's. Read any
+   `warn` rows' transcripts.
 2. **Holdout.** Run it on `holdout-v1` against the reference (a gym config with `bench: holdout-v1`). Its gain must
    point the same way. Don't read holdout transcripts for ideas.
 3. **Readings.** `regateo readings <dev run>`: no new kind of misread offer or acceptance behind its gains.

@@ -169,7 +169,7 @@ def test_promotion_checks():
 
     def side(deals, past=0):
         return SideStats(label="x", matches=100, mean_share=mean_ci([0.3] * 100), deal_rate=wilson(deals, 100),
-                         past_reservation=past, errors=0)
+                         clean_deal_rate=wilson(deals - past, 100), past_reservation=past, errors=0)
 
     diffs = [0.2, 0.1, 0.15, 0.05] * 25
     c = ChallengerStats(subject="a", side=side(80), reference=side(81), diff=paired_test(diffs),
@@ -177,7 +177,13 @@ def test_promotion_checks():
                                                diff=paired_test([-0.2] * 3 + [-0.1]))])
     status = {k.name: k.status for k in promotion_checks(c, purpose="dev", tier=None)}
     assert status == {"gain": "pass", "limit": "pass", "deals": "pass", "opponents": "warn"}
-    assert promotion_checks(c, purpose="dev", tier="screen")[0].status == "n/a"
+    screen = {k.name: k.status for k in promotion_checks(c, purpose="dev", tier="screen")}
+    assert screen["gain"] == "n/a" and screen["deals"] == "n/a"
+    # past-limit deals don't count: 78 closed but 6 past the limit is 72 clean, vs the reference's 76
+    past = c.model_copy(update={"side": side(78, past=6), "reference": side(76)})
+    assert {k.name: k.status for k in promotion_checks(past, purpose="dev", tier=None)}["deals"] == "fail"
+    assert {k.name: k.status for k in promotion_checks(
+        past.model_copy(update={"reference": side(80, past=8)}), purpose="dev", tier=None)}["deals"] == "pass"
     worse = c.model_copy(update={"side": side(70, past=2), "diff": paired_test([-0.01, 0.02] * 20)})
     status = {k.name: k.status for k in promotion_checks(worse, purpose="holdout", tier=None)}
     assert status["gain"] == "pass" and status["limit"] == "fail" and status["deals"] == "fail"

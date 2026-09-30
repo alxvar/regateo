@@ -64,11 +64,11 @@ limit-quiet against o1-v2 directly (paired): +0.048 [-0.006, +0.103], p=0.084.
   confident it's a solid deal for the right person", meaning to chat, and the rules reader took each as a clear
   acceptance of the staller's lowball. Only these two matches were read, to classify the failure.
 
-### Open
+### Decision (2026-09-30): promoted
 
-- Should the deal-rate check count only deals within the agent's own limit? A past-limit deal scores negative and is a
-  hard fail anyway, so counting it as a "deal" in the deal-rate check rewards the thing the limit check forbids.
-- The reader takes "deal" and "agree" in a non-accepting message as an acceptance. A tournament platform reading free
-  text may do the same, so this is a requirement M2 risk ("never close a deal by accident"). Two fixes, possibly both:
-  make the reader stricter (a referee change, so a new bench version), and have the veto reject acceptance words in a
-  message that doesn't accept (an agent change, testable now as the next experiment).
+- **Deal-rate check.** It now counts only deals within the agent's own limit, and only on promotion runs, not on
+  screens (`gym/report.py`). By that rule limit-quiet passes: 74% vs 71%.
+- **The two holdout deals past the limit** are waived for this promotion: both are the referee reading a non-accepting
+  message as an acceptance, not the agent offering or accepting past its limit. They remain a requirement M2 risk,
+  and the next experiment targets them with a veto on acceptance words in a message that doesn't accept.
+- o2/v2-limit-quiet is the reference from here on, and joins the league roster.

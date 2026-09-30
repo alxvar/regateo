@@ -161,7 +161,7 @@ function BenchmarkView({ r }: { r: GymReport }) {
         <div className="table-wrap" style={{ marginTop: 12 }}>
           <table>
             <thead><tr><th>Challenger</th><th className="r">vs reference</th><th className="r">p</th>
-              <th className="r">Share</th><th className="r">Deals</th><th className="r">Past limit</th>
+              <th className="r">Share</th><th className="r" title="Deals within its own limit">Deals</th><th className="r">Past limit</th>
               <th>Promotion checks</th><th>Next</th></tr></thead>
             <tbody>
               {cs.map((c) => (
@@ -172,7 +172,7 @@ function BenchmarkView({ r }: { r: GymReport }) {
                   <td className="r">{signed(c.diff.mean_diff)} <span className="muted">[{signed(c.diff.lo)}, {signed(c.diff.hi)}]</span></td>
                   <td className="r">{pValue(c.diff.p_value).replace("p = ", "")}</td>
                   <td className="r">{num(c.side.mean_share.mean)}</td>
-                  <td className="r">{pct(c.side.deal_rate.mean)}</td>
+                  <td className="r">{pct((c.side.clean_deal_rate ?? c.side.deal_rate).mean)}</td>
                   <td className="r">{c.side.past_reservation}</td>
                   <td><Checks checks={c.checks} /></td>
                   <td>{next(c)}</td>
@@ -183,7 +183,7 @@ function BenchmarkView({ r }: { r: GymReport }) {
         </div>
         <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
           Checks (docs/04-hill-climbing.md §3.1): gain significant on a full dev bench, same direction on the holdout;
-          no deals past its own limit; deal rate at most 2 points below the reference; no opponent significantly
+          no deals past its own limit; deals within its own limit at most 2 points below the reference's (full runs only); no opponent significantly
           worse. Hover a check for its numbers. The reading audit and holdout run stay with a person.
         </p>
       </div>
@@ -207,7 +207,9 @@ function SideCards({ a, b }: { a: SideStats; b: SideStats }) {
           <div className="tiles">
             <StatTile label="Mean surplus share" value={num(s.mean_share.mean)} foot={`95% CI ${interval(s.mean_share)}`} />
             <StatTile label="Deal rate" value={pct(s.deal_rate.mean, 1)}
-                      foot={`${interval(s.deal_rate, true)} · ${s.matches} matches`} />
+                      foot={s.clean_deal_rate && s.past_reservation
+                        ? `${pct(s.clean_deal_rate.mean, 1)} within its limit · ${s.matches} matches`
+                        : `${interval(s.deal_rate, true)} · ${s.matches} matches`} />
             <StatTile label="Past walk-away" value={s.past_reservation}
                       foot={s.errors ? `${s.errors} agent errors` : "deals that broke its limit"} />
           </div>
@@ -263,7 +265,7 @@ function ArenaView({ r }: { r: ArenaReport }) {
         <div className="table-wrap">
           <table>
             <thead><tr><th>#</th><th>Agent</th><th className="r">Rating</th><th className="r">Mean share</th>
-              <th className="r">Deals</th><th className="r">n</th></tr></thead>
+              <th className="r" title="Deals within its own limit">Deals</th><th className="r">n</th></tr></thead>
             <tbody>
               {r.leaderboard.map((s) => (
                 <tr key={s.label}>

@@ -1,0 +1,17 @@
+# The league (docs/04-hill-climbing.md §4): every champion plays every other agent here, both roles.
+# Add each new reference to the roster when it is promoted. If a champion loses head to head to an
+# older one, find out why before the next round.
+name: league
+roster:
+  - o1-qwen                  # reference until the first promotion
+  - o1/v2
+  - o2-qwen
+  - boulware
+  - {kind: "persona:tough", model: qwen-local, name: tough-qwen}
+games_per_pair: 10
+scenarios: {per_cell: 5, info_modes: [private], max_rounds: [6], deadline_known: [true, false]}
+protocol: freetext
+detector: text
+reader: shadow:rules+llm:qwen-local
+seed: 5
+settings: {concurrency: 32, cache: readwrite}

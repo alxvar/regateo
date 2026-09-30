@@ -122,3 +122,62 @@ async def test_several_challengers_against_one_reference(tmp_path, monkeypatch):
     assert [(c.subject, c.side.label, c.diff.n) for c in r.challengers] == [("a", "soft", pairs), ("a2", "hard", pairs)]
     assert r.challengers[0].diff.mean_diff == pytest.approx(r.diff.mean_diff)
     assert r.challengers[1].reference.label == "boulware"
+
+
+def test_jobs_interleave_cells():
+    jobs = GymSpec.model_validate({"name": "t", "reference": "boulware", "challengers": [SOFT],
+                                   "opponents": ["scripted:hardliner"],
+                                   "scenarios": {"per_cell": 3, "max_rounds": [4, 8]}}).jobs()
+    cells = [j.meta["cell"] for j in jobs[::4]]            # 4 jobs per scenario: 2 roles x 2 subjects
+    assert cells[:2] != [cells[0]] * 2 and len(set(cells[:2])) == 2
+
+
+def test_early_stopper_drops_only_clear_losers():
+    from regateo.gym.early import EarlyStop, EarlyStopper
+    stop = EarlyStopper(EarlyStop(min_pairs=10, every=5), ["a", "a2"])
+    for i in range(10):
+        stop.add(str(i), "a", 0.1 + 0.01 * (i % 3))          # well behind the reference
+        stop.add(str(i), "a2", 0.5 + 0.05 * (-1) ** i)       # level with it
+        stop.add(str(i), "b", 0.5)
+    assert stop.stopped == {"a": 10}
+    job = MatchJob(key="k", scenario=sample_scenarios(ScenarioSpec(per_cell=1), 1)[0],
+                   seller=AgentSpec(kind="boulware"), buyer=AgentSpec(kind="scripted:liar"))
+    assert stop.skip(job.model_copy(update={"meta": {"subject": "a"}}))
+    assert not stop.skip(job.model_copy(update={"meta": {"subject": "a2"}}))
+    assert not stop.skip(job.model_copy(update={"meta": {"subject": "b"}}))
+    stop.stopped["a2"] = 12
+    assert stop.skip(job.model_copy(update={"meta": {"subject": "b"}}))    # nobody left to compare with
+
+
+async def test_early_stop_in_a_gym(tmp_path, monkeypatch):
+    _bench(tmp_path, monkeypatch)
+    spec = GymSpec.model_validate({"name": "t", "bench": "b1", "reference": "boulware",
+                                   "challengers": [{"kind": "scripted:pushover", "name": "pushover"}, SOFT],
+                                   "early_stop": {"min_pairs": 8, "every": 4}, "settings": {"concurrency": 1}})
+    store = await Store.open(tmp_path / "db")
+    run_id, summary = await run_gym(spec, store)
+    assert summary.skipped > 0 and summary.done < summary.total
+    r = await build_gym_report(store, run_id)
+    pushover = next(c for c in r.challengers if c.side.label == "pushover")
+    assert pushover.stopped_at == 8 and pushover.diff.n == 8
+    assert pushover.checks[0].name == "gain" and pushover.checks[0].status == "fail"
+
+
+def test_promotion_checks():
+    from regateo.gym.report import Breakdown, ChallengerStats, SideStats, promotion_checks
+    from regateo.stats import mean_ci, paired_test, wilson
+
+    def side(deals, past=0):
+        return SideStats(label="x", matches=100, mean_share=mean_ci([0.3] * 100), deal_rate=wilson(deals, 100),
+                         past_reservation=past, errors=0)
+
+    diffs = [0.2, 0.1, 0.15, 0.05] * 25
+    c = ChallengerStats(subject="a", side=side(80), reference=side(81), diff=paired_test(diffs),
+                        by_opponent=[Breakdown(key="liar", a=mean_ci([0.1]), b=mean_ci([0.3]),
+                                               diff=paired_test([-0.2] * 3 + [-0.1]))])
+    status = {k.name: k.status for k in promotion_checks(c, purpose="dev", tier=None)}
+    assert status == {"gain": "pass", "limit": "pass", "deals": "pass", "opponents": "warn"}
+    assert promotion_checks(c, purpose="dev", tier="screen")[0].status == "n/a"
+    worse = c.model_copy(update={"side": side(70, past=2), "diff": paired_test([-0.01, 0.02] * 20)})
+    status = {k.name: k.status for k in promotion_checks(worse, purpose="holdout", tier=None)}
+    assert status["gain"] == "pass" and status["limit"] == "fail" and status["deals"] == "fail"

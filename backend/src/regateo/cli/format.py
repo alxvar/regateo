@@ -54,7 +54,23 @@ def gym_report(r: GymReport) -> str:
                          f"{est(c.side.deal_rate, True):>24}  {cols}  {d.n:4d}")
     lines += _table("By opponent", r.by_opponent) + _table("By role", r.by_role) + _table("By cell", r.by_cell)
     lines.append(f"\nCost ${r.cost_usd:.4f}  tokens in {r.input_tokens:,} / out {r.output_tokens:,}")
+    lines += _checks(r)
     return "\n".join(lines)
+
+
+_MARK = {"pass": "ok  ", "fail": "FAIL", "warn": "warn", "n/a": "-   "}
+
+
+def _checks(r: GymReport) -> list[str]:
+    if not r.challengers:
+        return []
+    where = f"{r.purpose} bench" + (f", tier {r.tier}" if r.tier else ", full")
+    out = [f"\nPromotion checks ({where}; docs/04-hill-climbing.md §3.1; also run `regateo readings {r.run_id}`)"]
+    for c in sorted(r.challengers, key=lambda c: -(c.diff.mean_diff or 0)):
+        verdict = "candidate" if all(k.status in ("pass", "warn") for k in c.checks) else "no"
+        out.append(f"  {c.subject:4} {c.side.label[:40]:40} {verdict}")
+        out += [f"         {_MARK[k.status]} {k.name:10} {k.detail}" for k in c.checks]
+    return out
 
 
 def arena_report(r: ArenaReport) -> str:

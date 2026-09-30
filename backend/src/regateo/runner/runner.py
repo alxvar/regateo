@@ -72,6 +72,8 @@ class RunSummary(BaseModel):
 
 
 Progress = Callable[[RunSummary], None]
+Skip = Callable[[MatchJob], bool]                        # checked when a job's turn comes; True: don't play it
+OnResult = Callable[[MatchJob, Outcome], None]           # called after each finished match
 
 
 def match_id(run_id: str, job: MatchJob) -> str:
@@ -102,7 +104,9 @@ class _Clients:
 
 
 async def run_jobs(jobs: list[MatchJob], *, store: Store, run_id: str, settings: RunSettings | None = None,
-                   on_progress: Progress | None = None) -> RunSummary:
+                   on_progress: Progress | None = None, skip: Skip | None = None,
+                   on_result: OnResult | None = None) -> RunSummary:
+    """Jobs start in list order. `skip` lets the caller drop jobs whose results are no longer needed."""
     settings = settings or RunSettings()
     if len({j.key for j in jobs}) != len(jobs):
         raise ValueError("job keys must be unique within a run")
@@ -134,11 +138,13 @@ async def run_jobs(jobs: list[MatchJob], *, store: Store, run_id: str, settings:
 
     async def one(job: MatchJob) -> None:
         async with sem:
-            if stop.is_set():
+            if stop.is_set() or (skip and skip(job)):
                 summary.skipped += 1
                 return
             try:
-                status = await _play(job, store, run_id, clients, meter)
+                status, outcome = await _play(job, store, run_id, clients, meter)
+                if outcome and on_result:
+                    on_result(job, outcome)
             except Abort:
                 stop.set()
                 summary.budget_exhausted = True
@@ -158,7 +164,8 @@ async def run_jobs(jobs: list[MatchJob], *, store: Store, run_id: str, settings:
     return summary
 
 
-async def _play(job: MatchJob, store: Store, run_id: str, clients: _Clients, meter: Meter) -> str:
+async def _play(job: MatchJob, store: Store, run_id: str, clients: _Clients,
+                meter: Meter) -> tuple[str, Outcome | None]:
     mid = match_id(run_id, job)
     replay = job.replay_key()
     scenario = job.scenario
@@ -197,4 +204,4 @@ async def _play(job: MatchJob, store: Store, run_id: str, clients: _Clients, met
             {"idx": idx, "shadow": name, "primary": a.model_dump() if a else None, "alt": b.model_dump() if b else None}
             for idx, name, a, b in detector.disagreements]}
     await store.finish_match(mid, result.outcome, cost_usd=meter.by_tag.get(f"match={mid}", 0.0), meta=extra)
-    return "done"
+    return "done", result.outcome

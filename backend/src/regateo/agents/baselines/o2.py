@@ -22,8 +22,17 @@ def _near(a: float, b: float) -> bool:
     return abs(a - b) <= max(TOL, 0.0005 * abs(b))
 
 
-def check(d: Decision, obs: Observation) -> list[str]:
-    """Hard-limit violations in a decision. Empty list: the decision may be sent."""
+CHECKS = ("all", "limit", "limit+mentions")
+
+
+def check(d: Decision, obs: Observation, checks: str = "all") -> list[str]:
+    """Hard-limit violations in a decision. Empty list: the decision may be sent.
+
+    `checks`: "all" (the original O2 rules), "limit" (only never offer or accept past the walk-away
+    price), or "limit+mentions" (also never write a price past it, even to reject it: a platform
+    reading free text may take "$199 is too much" for an offer of $199)."""
+    if checks != "all":
+        return _limit_checks(d, obs, mentions=checks == "limit+mentions")
     v = obs.view
     s = sign(v.role)
     res = v.reservation
@@ -65,6 +74,34 @@ def check(d: Decision, obs: Observation) -> list[str]:
     return problems
 
 
+def _limit_checks(d: Decision, obs: Observation, *, mentions: bool) -> list[str]:
+    v = obs.view
+    s = sign(v.role)
+    theirs = standing_offer(obs)
+    past = lambda p: s * p < s * v.reservation - TOL  # noqa: E731
+    problems: list[str] = []
+    if d.action == "offer":
+        if d.price is None:
+            problems.append("an offer needs a price.")
+        elif past(d.price):
+            problems.append(f"{fmt_price(d.price, v.currency)} is past your walk-away price.")
+    elif d.action == "accept":
+        price = d.price if d.price is not None else theirs
+        if price is None:
+            problems.append("there is no offer from the other side to accept.")
+        elif past(price):
+            problems.append("accepting their offer would go past your walk-away price.")
+    if mentions:
+        found = find_prices(d.message)
+        if any(p.currency for p in found):
+            found = [p for p in found if p.currency]        # "2 days", "50 chairs" aren't prices
+        bad = sorted({p.value for p in found if past(p.value)})
+        if bad:
+            problems.append(f"the message mentions {', '.join(fmt_price(p, v.currency) for p in bad)}, past your "
+                            "walk-away price. Don't write prices you would never agree to, not even to reject them.")
+    return problems
+
+
 def repair(d: Decision, obs: Observation) -> Decision:
     """Deterministic safe version of a decision that failed its checks twice."""
     v = obs.view
@@ -82,6 +119,8 @@ def repair(d: Decision, obs: Observation) -> Decision:
 
 
 class VetoedAgent(EndToEndAgent):
+    """Params: as O1, plus `checks` ("all" by default; see `check`)."""
+
     stage = "o2"
 
     async def respond(self, obs: Observation) -> Move:
@@ -92,7 +131,7 @@ class VetoedAgent(EndToEndAgent):
                 decision = await self.decide(obs, feedback)
             except LLMError as e:
                 return safe_fallback(obs, f"{type(e).__name__}: {e}")
-            problems = check(decision, obs)
+            problems = check(decision, obs, self.params.get("checks", "all"))
             if not problems:
                 return self.to_move(decision, vetoes=vetoes) if vetoes else self.to_move(decision)
             vetoes += problems
@@ -103,5 +142,7 @@ class VetoedAgent(EndToEndAgent):
 
 @register("o2", prompts=VetoedAgent.prompt_refs)
 def build_o2(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> VetoedAgent:
+    if spec.params.get("checks", "all") not in CHECKS:
+        raise ValueError(f"unknown checks {spec.params['checks']!r}; known: {CHECKS}")
     return VetoedAgent(spec, view, ctx)
 

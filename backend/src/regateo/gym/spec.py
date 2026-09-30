@@ -9,13 +9,14 @@ from regateo.agents.base import AgentSpec
 from regateo.core.config import configs_dir, load_yaml_dict
 from regateo.core.ids import derive_seed
 from regateo.core.roles import Role
+from regateo.gym.early import EarlyStop
 from regateo.runner.runner import MatchJob
 from regateo.runner.specs import ExperimentSpec, cell_of, resolve_agent
 
 # What a bench fixes. A gym that names a bench may not set these itself: results on one bench
 # stay comparable across experiments, and changing any of them means a new bench version.
 BENCH_FIELDS = ("mode", "opponents", "roles", "scenarios", "protocol", "detector", "reader", "seed", "sim_clock",
-                "tiers")
+                "tiers", "purpose")
 
 
 def load_bench(name: str) -> dict[str, Any]:
@@ -44,6 +45,8 @@ class GymSpec(ExperimentSpec):
     bench: str | None = None
     tier: str | None = None
     tiers: dict[str, int] = Field(default_factory=dict)     # tier name -> scenarios per cell
+    purpose: Literal["dev", "holdout"] = "dev"               # set by the bench; decides the promotion checks
+    early_stop: EarlyStop | None = None                       # benchmark only: stop clear losers (gym.early)
 
     @model_validator(mode="before")
     @classmethod
@@ -70,6 +73,11 @@ class GymSpec(ExperimentSpec):
             data["mode"] = data.get("mode", "benchmark")
             data["a"], data["extra"] = first, rest
         return data
+
+    @field_validator("early_stop", mode="before")
+    @classmethod
+    def _early_stop(cls, v: Any) -> Any:
+        return {} if v is True else None if v is False else v
 
     @field_validator("a", "b", mode="before")
     @classmethod
@@ -105,7 +113,12 @@ class GymSpec(ExperimentSpec):
         common = {"protocol": self.protocol, "detector": self.detector, "reader": self.reader,
                   "sim_clock": self.sim_clock}
         jobs = []
-        for i, s in enumerate(self.sample()):              # i indexes the full set, so seeds don't shift by tier
+        scenarios = self.sample()
+        # Interleave the cells (1st scenario of each cell, then the 2nd...), so any prefix of the run, which
+        # early stopping judges, covers every cell. i indexes the full set, so seeds don't shift by order or tier.
+        order = sorted(range(len(scenarios)), key=lambda i: int(scenarios[i].id.rsplit(":", 1)[1]))
+        for i in order:
+            s = scenarios[i]
             if cap is not None and int(s.id.rsplit(":", 1)[1]) >= cap:
                 continue
             cell = cell_of(s)

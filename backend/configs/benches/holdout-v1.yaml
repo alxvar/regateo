@@ -1,0 +1,31 @@
+# The holdout bench: only for promotion candidates (docs/04-hill-climbing.md §4). Nobody mines its
+# transcripts for ideas; after about 5 promotions, or once it has shaped a design choice, it retires
+# into dev and holdout-v2 replaces it. Frozen once it has results.
+#
+# Everything differs from standard-v1: seed, items, a price scale about 5x larger, 8 rounds instead of 6,
+# and opponents dev never plays (three new personas, one of them with Qwen thinking on, O2, boulware,
+# and a scripted staller).
+# 2 cells x 6 scenarios x 6 opponents x 2 roles = 144 pairs per challenger.
+purpose: holdout
+mode: benchmark
+opponents:
+  - {kind: "persona:anchor", model: qwen-local-think}
+  - {kind: "persona:splitter", model: qwen-local}
+  - {kind: "persona:stonewall", model: qwen-local}
+  - o2-qwen
+  - boulware
+  - scripted:staller
+scenarios:
+  items: ["a second-hand espresso machine", "a used electric guitar", "a pallet of printer toner",
+          "a three-month consulting retainer"]
+  seller_reservation: [400, 650]
+  zopa: [40, 300]
+  market_margin: [75, 200]
+  per_cell: 6
+  info_modes: [private]
+  max_rounds: [8]
+  deadline_known: [true, false]
+protocol: freetext
+detector: text
+reader: shadow:rules+llm:qwen-local     # same reading as standard-v1
+seed: 11

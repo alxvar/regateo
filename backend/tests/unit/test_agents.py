@@ -103,6 +103,28 @@ def test_o2_checks():
     assert any("must state" in p for p in check(Decision(action="offer", price=160, message="Lower it is."), o))
 
 
+def test_o2_limit_checks():
+    h = [m(0, Role.BUYER, "$120", A.OFFER, 120), m(1, Role.SELLER, "$170", A.OFFER, 170),
+         m(2, Role.BUYER, "$95", A.OFFER, 95)]
+    o = obs(Role.SELLER, h)
+    walk_back = Decision(action="offer", price=175, message="Actually, $175, and I won't go below $100.")
+    assert check(walk_back, o, "limit") == []                       # only the limit counts
+    assert any("walk-away" in p for p in check(Decision(action="offer", price=90, message="$90"), o, "limit"))
+    assert any("walk-away" in p for p in check(Decision(action="accept", price=None, message="Deal."), o, "limit"))
+    assert check(Decision(action="accept", price=None, message="Deal."), obs(Role.SELLER, h[:1]), "limit") == []
+    no = Decision(action="reject", message="$95 is far too low. $170 is fair for this bike.")
+    assert check(no, o, "limit") == []
+    assert any("$95" in p for p in check(no, o, "limit+mentions"))
+    assert check(Decision(action="offer", price=160, message="$160 for 2 bikes? No: $160 each."), o,
+                 "limit+mentions") == []
+
+
+def test_o2_rejects_unknown_checks():
+    with pytest.raises(ValueError, match="unknown checks"):
+        build_agent(AgentSpec(kind="o2", model="fake", params={"checks": "some"}), S.view_for(Role.SELLER),
+                    ctx(Role.SELLER, FakeProvider([])))
+
+
 async def test_o2_retries_then_repairs():
     bad = Decision(action="offer", price=90, message="Fine, $90.")
     fake = FakeProvider([bad, bad])

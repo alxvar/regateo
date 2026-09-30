@@ -1,0 +1,166 @@
+# 04: Hill-climbing the agent
+
+Status: **proposed**. This covers how we make the agent stronger one measured step at a time, and when a challenger replaces the reference. The per-experiment mechanics (variant configs, freezing, the gym command) are in [experiments/README.md](experiments/README.md). This doc adds what they don't cover yet: a promotion rule, a holdout, an opponent pool that grows, and a loop that can run unattended.
+
+## 1. Goal and what's missing
+
+Our goal is an agent that captures more value than any other team's agent. We get there by hill-climbing: propose a small change, measure it against the current reference, keep it only if it wins.
+
+The gym already handles the measurement: agent identity covers every prompt and setting, comparisons are paired, the cache replays unchanged agents for free, and benches come in a screen tier and a full tier. Three things are missing:
+
+1. **A holdout.** We compare several challengers per round on the same bench, so the best of them will usually look better than it really is. Without a second bench, gains can't be told apart from overfitting to `standard-v1`.
+2. **Opponents that get stronger.** The bench's six opponents never change. The tournament's opponents are other teams' agents, most likely LLM-based and stronger than Qwen personas.
+3. **A written promotion rule.** Today "wins on the full bench" is the whole rule. It doesn't say what we give up for the gain (deal rate, safety, robustness against particular opponents).
+
+## 2. Terms
+
+- **Bench:** the fixed exam every agent sits. It fixes the opponents, the scenarios, the rules and a random seed, and is frozen once it has results, so scores from different weeks compare. Example: [standard-v1.yaml](../backend/configs/benches/standard-v1.yaml).
+- **Cell:** one combination of rule settings within a bench. standard-v1 has two: deadline known and deadline hidden, both with 6 rounds and private information.
+- **Pair:** the challenger and the reference each play the same scenario against the same opponent, in the same role, with the same seed. We compare their two scores. Pairing removes the luck of the draw: an easy scenario is easy for both.
+- **Tier:** a subset of a bench's scenarios. The full bench is 2 cells × 10 scenarios × 6 opponents × 2 roles = 240 pairs. Tier `screen` uses the first 4 scenarios per cell: 96 pairs.
+- **Share:** the fraction of the zone of possible agreement (ZOPA) an agent captured. 0 is a deal at our own limit, 1 a deal at the other side's limit. No deal scores 0. **Δshare** is challenger minus reference, averaged over pairs.
+- **Reservation price:** each agent's own walk-away price, given by the scenario (and, we expect, by the tournament). Agents never see the ZOPA or the other side's limit; only the referee knows both, to score.
+
+## 3. What we maximise
+
+**Primary metric:** Δshare against the reference. The tournament ranks teams by value captured, so this is the number that matters. Bradley-Terry ratings and win rates are diagnostics only.
+
+### 3.1 Promotion rule
+
+A challenger becomes the reference only if all of these hold:
+
+| Check | Where | Rule | Why |
+|---|---|---|---|
+| Gain on dev | `standard-v1`, full tier | Δshare > 0 with p < 0.05 (`stats/paired.py`) | The screen tier is for dropping losers, never for promoting |
+| Same direction on holdout | `holdout-v1` (§4) | Δshare > 0; it need not be significant on its own | A significant gain on dev plus a gain on unseen opponents is strong evidence. Requiring significance twice would reject most real gains (§6) |
+| Never past reservation | both benches | 0 deals past our walk-away price | Requirement M1. A hard gate, never averaged away |
+| Keeps closing deals | both benches | deal rate ≥ reference − 2 points | Otherwise it gains share by walking away, which scores 0 in a real match |
+| Deals are real | `regateo readings RUN` | no new class of misread acceptances or offers | It must win by negotiating, not by exploiting the referee's reader |
+
+**Warning, not a gate:** an opponent whose Δshare drops significantly (p < 0.05) or by more than 0.10. Each opponent has only 40 pairs on the full bench, so smaller drops are indistinguishable from chance (§6). A human reads the flagged transcripts and decides.
+
+**The past-reservation gate fails today.** In the full exp-001 run, o1-qwen closed 16 deals past its walk-away price and o1-informed-v2 closed 10: the prompt tells the model its limit, but nothing enforces it. O2's code veto brought this down from 19 to 1 on the o2-vs-o1 benchmark, but its deal rate fell from 76% to 64%. The line we climb needs a veto that keeps the deal rate (§7), and the remaining case needs explaining.
+
+## 4. Benches
+
+| Bench | Contents | Used for | How often |
+|---|---|---|---|
+| `standard-v1` (dev) | As today: 3 scripted and 3 Qwen persona opponents, 10 scenarios per cell | Every round: screen, then full | Every round |
+| `holdout-v1` | New seed and scenarios; opponents dev never sees: separately written personas, boulware and o2-qwen, and personas on Qwen with thinking on (`qwen-local-think`) | Promotion candidates only | About once per promotion |
+| `league` (arena round robin) | Every past champion, plus o1, o2, boulware and the strongest personas | After each promotion | Once per promotion |
+
+All opponents run on local Qwen or in code (§8).
+
+**Holdout rules.**
+- Only the single best candidate of a round runs on the holdout.
+- Nobody, human or proposer, reads holdout transcripts to find ideas for challengers. They are for checking results, not for mining failures. Once we do mine them, the holdout has become a second dev bench.
+- After about 5 promotions, or as soon as the holdout has influenced a design choice, retire it into dev and write `holdout-v2`.
+
+**The league** answers "does it beat all other agents", not just "does it beat the fixed six". Each champion joins the roster, so later challengers have to beat stronger and more varied play. If a new champion loses to an old one head to head, we are going in circles and should find out why before the next round.
+
+## 5. The loop
+
+### 5.1 One round
+
+1. **Mine failures.** From the reference's last full dev run, take the worst pairs: the lowest-share matches, round-limit no-deals, and cells where it lost to the opponent. Group them by cause, for example opened too soft, conceded to a fake deadline, lost track of the numbers, or accepted an injected instruction. The "Why" section of [001](experiments/001-o1-levers.md) is this step done by hand.
+2. **Propose 3–4 challengers.** Each changes one lever, is a small `extends:` config, and carries a hypothesis tied to one failure group.
+3. **Screen** (96 pairs), with early stopping (§6). Drop clear losers. The reference replays from the cache, so only challengers use the GPU.
+4. **Full dev bench** for the best one or two. Winning levers don't always add up, so when two win, also run one challenger that combines them.
+5. **Holdout, guardrails and reading audit** (§3.1) for the best candidate.
+6. **Promote.** `regateo freeze` its files, update "Current reference" in the experiments README, add it to the league roster, run the league, and write up `NNN-*.md`, null results included.
+
+**Time budget.** In exp-001, each new match took about 3 s of wall time at concurrency 32, so a challenger's screen takes about 5 minutes and the rest of its full bench about 7. A round of 4 challengers comes to about 45 minutes:
+
+| Step | Matches | Time |
+|---|---|---|
+| Screen, 4 challengers | 4 × 96 | ~20 min, less with early stopping |
+| Rest of the full bench, 1–2 challengers | 1–2 × 144 | ~7–15 min |
+| Holdout, 1 challenger | ~100–240 | ~5–12 min |
+
+That is about 10 rounds overnight. Fewer challengers per round keeps rounds short without making each measurement noisier.
+
+### 5.2 Automating steps 1–4
+
+Steps 1–4 run without us. Step 5 and the promotion stay a human decision, because that is where overfitting gets in.
+
+A mid-size local model is unreliable at long, multi-step tool use, and an unattended loop will hit its failures. So the proposer is **a script with one LLM call, not a coding agent**:
+
+1. **`regateo mine RUN` (code, no LLM).** Picks the reference's worst pairs, groups them by opponent and end reason, and writes a bundle: the gym report, about 10 of the worst transcripts, and our agent's current prompt and config.
+2. **Propose (one Qwen call, structured output).** Input: the bundle. Output: 3–4 challengers, each with a hypothesis, an `extends:` config, and optionally a new prompt version.
+3. **Validate (code).** The configs load; only our agent's params and prompts changed; the frozen-files test passes. A proposal that fails is dropped, not repaired.
+4. **Run** `regateo gym` on the proposals, and write the stub experiment doc.
+
+Changes that need new code, such as a new pipeline stage, are proposed and built by us, not by this loop.
+
+If we later want a real agent harness here, Pi or OpenCode can use vLLM's OpenAI-compatible API directly; Claude Code needs a translating proxy (e.g. LiteLLM) in front of vLLM. The isolation below then has to be enforced with a separate checkout or container, not by construction.
+
+### 5.3 What the proposer may see
+
+The proposer sees exactly what is in the bundle, so isolation holds by construction:
+
+| May see | Must not see |
+|---|---|
+| Our agent's prompts and config | Persona prompts (`prompts/persona_*.md`) and opponent code (`agents/opponents/`) |
+| Dev transcripts, including opponent messages: that is what our agent sees live | Anything from the holdout |
+| The gym report for dev runs | Referee code and bench files |
+
+The only files it may add are new agent configs under `configs/agents/` and new prompt versions.
+
+Dev transcripts still reveal how the scripted opponents behave, and those are deterministic, so the proposer can overfit to them. The holdout's different opponents are there to catch that.
+
+During matches, agents are already isolated: each gets its `PrivateView` and the messages, nothing else.
+
+## 6. Noise and cost
+
+Noise on Δshare shrinks with the square root of the number of pairs, so halving it costs 4× the matches. From the exp-001 and o2-vs-o1 full runs:
+
+| Pairs | Noise on Δshare (95%, ±) | Smallest gain we can reliably see |
+|---|---|---|
+| 40 (one opponent within the full bench) | ~0.12 | ~0.15 |
+| 96 (screen) | ~0.08 | ~0.10 |
+| 240 (full) | ~0.05 | ~0.06 |
+| 480 (a future `standard-v2`, 20 scenarios per cell) | ~0.035 | ~0.04 |
+
+For example, in the full exp-001 run, o1-v2 gained +0.105 (p = 0.0001), clearly real, while o1-informed-v2's +0.026 (range −0.022 to +0.075) can't be told apart from nothing.
+
+This sets the strategy:
+- **Early on, gains are large,** and the screen plus the full bench are enough.
+- **When easy wins run out,** add `standard-v2` with about 20 scenarios per cell, instead of more challengers. The reference then has to be re-run once on the new bench.
+- **Early stopping, only to drop losers.** The gym checks each challenger every ~24 pairs and stops one that is clearly behind the reference. It never promotes early: checking repeatedly for a winner produces false winners.
+- **Successive halving** if screens get crowded: screen everything, give more pairs only to the top half, repeat.
+- **Settings we can't observe yet.** [01 §4](01-problem-and-constraints.md) lists unknowns such as a hidden deadline, structured or free-text offers, or several issues. Keep bench cells split along the ones we can simulate (as `deadline_known` already is), so a gain in one setting can't hide a loss in another.
+- **Referee drift.** Changes to the referee's reader change scores for every agent. The reader is recorded in the bench (as now); a reader change means a new bench version.
+
+## 7. What to build
+
+| Piece | Size | Notes |
+|---|---|---|
+| Walk-away veto for the climbing line | small–medium | Makes the past-reservation gate passable. Reuse O2's veto, as a param on O1 or by climbing O2, and find out why O2's deal rate dropped |
+| `backend/configs/benches/holdout-v1.yaml` | small | New seed and scenarios; new personas; boulware, o2-qwen, thinking-mode personas |
+| Held-out persona prompts | small | Written without looking at dev failures, ideally by someone other than whoever writes the challengers |
+| `backend/configs/arena/league.yaml` | small | Roster of champions, grows with each promotion |
+| Guardrail checks in the gym report | medium | Pass/fail per challenger next to Δshare (§3.1), and per-opponent warnings |
+| Early stopping in the gym | medium | Drops clear losers during the screen (§6) |
+| `regateo mine RUN` | medium | The failure bundle for step 1 (§5.2) |
+| Proposer script | medium | One structured Qwen call, then validation (§5.2) |
+| Promotion checklist | small | In [experiments/README.md](experiments/README.md), pointing here |
+
+## 8. Decisions and open questions
+
+**Decided:**
+- No API-based models for now, in matches, benches or the proposer. Everything runs on local Qwen or in code.
+- The holdout must show a gain in the same direction, not a significant one (§3.1).
+- A per-opponent drop is a warning for a human to read, not an automatic veto (§3.1).
+- Rounds stay lean: 3–4 challengers, screen with early stopping, full bench and holdout only for the best (§5.1).
+- The proposer is a script with one LLM call, not a coding agent (§5.2).
+
+**Open:**
+1. When the organizers answer the open questions in 01 §5, which benches do we rebuild, and which results do we keep?
+
+## 9. First steps
+
+1. Write up [001](experiments/001-o1-levers.md): its screen and full runs are done (full: `run_01a0eec5c2bc5764a1f1`). It is effectively round 1 of this loop.
+2. Add the walk-away veto to the climbing line.
+3. Build `holdout-v1` and the league config **before** promoting anything from 001.
+4. Add the guardrail checks to the gym report, then run 001's best candidate through §3.1.
+5. Build early stopping, `regateo mine` and the proposer, then let the loop run overnight.

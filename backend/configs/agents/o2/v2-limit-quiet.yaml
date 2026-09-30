@@ -1,0 +1,3 @@
+# o2/v2-limit, and never write a price past the limit, not even to reject it.
+extends: o2/v2
+params: {checks: limit+mentions}

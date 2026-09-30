@@ -73,6 +73,18 @@ def _checks(r: GymReport) -> list[str]:
     return out
 
 
+def proposals(written: list, rejected: list) -> str:
+    out = []
+    for w in written:
+        p = w.proposal
+        out.append(f"  + {w.agent}" + (f" (prompt {w.prompt_file})" if w.prompt_file else ""))
+        out.append(f"      targets: {' '.join(p.failure.split())[:200]}")
+        out.append(f"      hypothesis: {' '.join(p.hypothesis.split())[:200]}")
+    for r in rejected:
+        out.append(f"  - {r.proposal.name}: rejected, {'; '.join(r.reasons)}")
+    return "\n".join(out) or "  no proposals"
+
+
 def arena_report(r: ArenaReport) -> str:
     lines = [f"Arena {r.name}  run {r.run_id}  [{r.status}]  {r.done}/{r.total or '?'} matches", "",
              f"  {'#':>2}  {'agent':28} {'rating':>7}  {'mean share':>24}  {'deal rate':>24}  {'n':>5}"]

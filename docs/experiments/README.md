@@ -25,9 +25,37 @@ One file per question: `NNN-<question>.md`. Null results count: they stop us fro
    settings: {concurrency: 32, cache: readwrite}
    ```
    `regateo gym exp-002-...`. Commit first: the run records the commit, and warns when there are uncommitted changes.
-4. **Write up** the hypothesis, run id and result here. When a challenger wins on the full bench, it becomes the reference.
-   Freeze its prompt and config with `regateo freeze <files>`.
-   The full promotion rule (holdout, guardrails, league) is in [04-hill-climbing.md](../04-hill-climbing.md).
+   Add `early_stop: true` to stop challengers that are clearly behind before they finish (only losers are stopped).
+4. **Write up** the hypothesis, run id and result here. A challenger that wins on the full bench is a *candidate*;
+   it becomes the reference only after the promotion checklist below.
+
+## Promotion checklist
+
+The rule and its reasons are in [04-hill-climbing.md §3.1](../04-hill-climbing.md). For the best candidate:
+
+1. **Dev, full tier.** In the gym report's "Promotion checks", the candidate reads `candidate`: gain significant,
+   no deals past its own limit, deal rate no more than 2 points below the reference. Read any `warn` rows' transcripts.
+2. **Holdout.** Run it on `holdout-v1` against the reference (a gym config with `bench: holdout-v1`). Its gain must
+   point the same way. Don't read holdout transcripts for ideas.
+3. **Readings.** `regateo readings <dev run>`: no new kind of misread offer or acceptance behind its gains.
+4. **Promote.** `regateo freeze` its prompt and config, update "Current reference" above, add it to the roster in
+   `backend/configs/arena/league.yaml`, and run `regateo arena league`. If it loses head to head to an older champion,
+   find out why before the next round.
+
+## The climb loop
+
+Steps 1–4 of a round can run unattended on local Qwen ([04 §5.2](../04-hill-climbing.md)):
+
+```
+regateo mine <dev run>                                   # the failure bundle the proposer sees (reference by default)
+regateo propose <dev run> --parent <agent>               # one Qwen call: challenger configs + screen gym + stub doc
+regateo climb <dev run> --parent <agent> --rounds 5      # propose, screen, full bench for the best 2, repeat
+```
+
+The proposer sees only the bundle and the log below: our agent's prompts and settings, dev transcripts, and results.
+Holdout runs are refused. Every proposal is validated in code (placeholders kept, a real change, a free name) before
+it is written. Proposed experiments are marked "Not yet reviewed by a person" until someone reads them. Results of
+each round are also logged to `data/climb/log.jsonl`, which the next round's proposer reads to avoid repeats.
 
 ## Why the numbers can be trusted
 
@@ -40,11 +68,13 @@ One file per question: `NNN-<question>.md`. Null results count: they stop us fro
   matches replay when the full bench runs. The cache key also covers the model profile's settings, so turning
   thinking on is a miss, not a stale replay.
 - **Benches.** A bench fixes opponents, scenarios, rules and seed. Numbers from different benches are not compared.
-  Tier `screen` (the first 4 scenarios per cell, 96 pairs, share CI about ±0.07) drops clear losers. The full bench
-  (240 pairs, about ±0.04) is for decisions.
+  Tier `screen` (the first 4 scenarios per cell, 96 pairs) drops clear losers. The full bench (240 pairs) is for
+  decisions. One agent's share is known to about ±0.07 and ±0.04; the *difference* between two agents, which is what
+  we decide on, to about ±0.08 and ±0.05 ([04 §6](../04-hill-climbing.md)).
 
 ## Log
 
 | # | Question | Status | Result |
 |---|---|---|---|
 | [001](001-o1-levers.md) | Which no-new-components levers make O1 stronger? | done | Strategy prompt v2: +0.105 share on the full bench (p=0.0001). Reasoning, thinking and the digest each hurt: more deals, less value. Presence penalty no effect |
+| [002](002-limit-veto.md) | Can a code veto stop deals past our own limit without costing value? | running | |

@@ -1,0 +1,17 @@
+# The climb loop's proposer (regateo propose / climb): qwen-local-think with room for three prompt
+# rewrites after its reasoning. Input (a failure bundle) is about 5k tokens; vLLM's context is 16k.
+name: qwen-local-propose
+provider: openai
+model: qwen-local
+base_url: ${VLLM_BASE_URL:-http://localhost:8001/v1}
+max_tokens: 10000
+max_concurrency: 1
+timeout_s: 1200
+max_retries: 0
+extra:
+  temperature: 1.0
+  top_p: 0.95
+  presence_penalty: 0.0
+  extra_body:
+    top_k: 20
+    chat_template_kwargs: {enable_thinking: true}

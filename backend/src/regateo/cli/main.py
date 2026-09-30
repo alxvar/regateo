@@ -69,7 +69,7 @@ def match(
     buyer: Annotated[str, typer.Option(help="agent config name or kind")],
     model: Annotated[str | None, typer.Option(help="model profile for LLM agents that don't name one")] = None,
     scenario_seed: Annotated[int, typer.Option(help="which sampled scenario to play")] = 0,
-    max_rounds: int = 6,
+    max_rounds: int = 5,
     deadline_known: bool = True,
     protocol: str = "structured",
     detector: str = "structured",
@@ -215,6 +215,88 @@ def runs(kind: str | None = None, limit: int = 20, db: DbOpt = None) -> None:
             p = await store.run_progress(r.id)
             typer.echo(f"{r.id}  {r.kind:6} {r.status:17} {p['done']:>5}/{p['total'] or '?':<5} "
                        f"${p['cost_usd']:<9.4f} {r.name}")
+        await store.close()
+
+    asyncio.run(go())
+
+
+@app.command()
+def mine(
+    run_id: str,
+    subject: Annotated[str, typer.Option(help="a, b (the reference) or a2... of a benchmark gym")] = "b",
+    worst: Annotated[int, typer.Option(help="transcripts to include")] = 5,
+    out: Annotated[Path | None, typer.Option(help="write the bundle here instead of printing it")] = None,
+    db: DbOpt = None,
+) -> None:
+    """Failure bundle of a dev gym run: where an agent loses value, and its worst matches."""
+    from regateo.climb.mine import mine as mine_run
+
+    async def go() -> None:
+        store = await Store.open(_db(db), readonly=True)
+        bundle = await mine_run(store, run_id, subject=subject, worst=worst)
+        await store.close()
+        if out:
+            out.write_text(bundle.markdown())
+            typer.echo(f"wrote {out}")
+        else:
+            typer.echo(bundle.markdown())
+
+    asyncio.run(go())
+
+
+@app.command()
+def propose(
+    run_id: str,
+    parent: Annotated[str, typer.Option(help="agent config the challengers extend, e.g. o2/v2-limit")],
+    reference: Annotated[str | None, typer.Option(help="reference for the screen gym (default: the parent)")] = None,
+    subject: str = "b",
+    n: Annotated[int, typer.Option(help="challengers to ask for")] = 3,
+    proposer: Annotated[str, typer.Option(help="model profile that proposes")] = "qwen-local-propose",
+    bench: str = "standard-v1",
+    db: DbOpt = None,
+) -> None:
+    """Ask a local model for challengers from a run's failures; write their configs and a screen gym."""
+    from regateo.climb.mine import mine as mine_run
+    from regateo.climb.propose import ask, write, write_experiment
+
+    async def go() -> None:
+        store = await Store.open(_db(db), readonly=True)
+        bundle = await mine_run(store, run_id, subject=subject)
+        await store.close()
+        written, rejected = write(await ask(get_client(proposer), bundle, n=n), parent)
+        typer.echo(fmt.proposals(written, rejected))
+        if written:
+            name = write_experiment(written, reference=reference or parent, bench=bench, source_run=run_id)
+            typer.echo(f"\nNext: regateo gym {name}")
+
+    asyncio.run(go())
+
+
+@app.command()
+def climb(
+    run_id: Annotated[str, typer.Argument(help="dev gym run whose failures to mine")],
+    parent: Annotated[str, typer.Option(help="agent config the challengers extend")],
+    reference: Annotated[str | None, typer.Option(help="reference to beat (default: the parent)")] = None,
+    subject: str = "b",
+    rounds: int = 1,
+    n: int = 3,
+    proposer: str = "qwen-local-propose",
+    bench: str = "standard-v1",
+    db: DbOpt = None,
+) -> None:
+    """Unattended rounds: mine, propose, screen, full bench for the best. Promotion stays manual."""
+    from regateo.climb.loop import climb_round
+
+    async def go() -> None:
+        store = await Store.open(_db(db))
+        for i in range(rounds):
+            typer.echo(f"Round {i + 1}/{rounds}")
+            r = await climb_round(store, from_run=run_id, parent=parent, reference=reference or parent,
+                                  subject=subject, bench=bench, n=n, proposer=proposer, on_progress=_progress)
+            sys.stderr.write("\n")
+            typer.echo(fmt.proposals(r.written, r.rejected))
+            for agent, res in r.results.items():
+                typer.echo(f"  {agent}: {res}")
         await store.close()
 
     asyncio.run(go())

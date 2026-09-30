@@ -1,0 +1,269 @@
+# Labeled readings: what a message does, in context. `messages` alternate buyer, seller, buyer...;
+# the last one is read. The regression corpus for every reader (`regateo reader-eval`): each
+# misread we find in a transcript goes here, with where it came from.
+cases:
+- messages:
+  - I can commit at $120.
+  - $120 is below value, so I'm offering $155.
+  kind: offer
+  price: 155
+  source: test_reader.py
+- messages:
+  - I can commit at $120.
+  - I can do $148 given the $120 you offered.
+  kind: offer
+  price: 148
+  source: test_reader.py
+- messages:
+  - $120?
+  - $155.
+  - $130.
+  - I was at $155; now $148.
+  kind: offer
+  price: 148
+  source: test_reader.py
+- messages:
+  - $120?
+  - $155.
+  - $130.
+  - Still $155, it's fair.
+  kind: offer
+  price: 155
+  source: test_reader.py
+- messages:
+  - $120?
+  - Anywhere from $140 to $160 works.
+  kind: offer
+  price: null
+  source: test_reader.py
+- messages:
+  - $120?
+  - $150 or $145 with pickup.
+  kind: offer
+  price: null
+  source: test_reader.py
+- messages:
+  - $120?
+  - Let's meet in the middle.
+  kind: none
+  price: null
+  source: test_reader.py
+- messages:
+  - $120?
+  - $120 is too low.
+  kind: none
+  price: null
+  source: test_reader.py
+- messages:
+  - $120?
+  - Tell me about delivery.
+  kind: none
+  price: null
+  source: test_reader.py
+- messages:
+  - $150
+  - $170
+  - Deal, $170 it is.
+  kind: accept
+  price: 170
+  source: test_reader.py
+- messages:
+  - $150
+  - $170
+  - OK, deal.
+  kind: accept
+  price: 170
+  source: test_reader.py
+- messages:
+  - $150
+  - $170
+  - Great, we agree at $160!
+  kind: offer
+  price: 160
+  source: test_reader.py
+- messages:
+  - $120?
+  - $129.
+  - How about $129?
+  kind: offer
+  price: 129
+  source: test_reader.py
+- messages:
+  - $120?
+  - My offer stands at $175.
+  - $175 is well above what I can justify. I'm not ready to meet at that level.
+  kind: none
+  price: null
+  source: test_reader.py
+- messages:
+  - $120?
+  - I paid $200; I'd sell at $150.
+  - $160?
+  - $155.
+  - $130?
+  - $150 then.
+  kind: offer
+  price: 150
+  source: test_reader.py
+- messages:
+  - $150
+  - $170
+  - How about $160, deal?
+  kind: offer
+  price: 160
+  source: test_reader.py
+- messages:
+  - $78
+  - $125.
+  - $120?
+  - I can meet you at $130.
+  - $130 is over my budget. I'm prepared to go up to $125 as my final offer. If that works for you, we can close
+    the deal right now.
+  kind: offer
+  price: 125
+  source: test_reader.py
+- messages:
+  - $150
+  - $140
+  - $140 per chair is acceptable to me.
+  kind: accept
+  price: 140
+  source: test_reader.py
+- messages:
+  - $150
+  - $140
+  - Great, $140 it is! Thanks for the fair deal.
+  kind: accept
+  price: 140
+  source: test_reader.py
+- messages:
+  - $150
+  - $140
+  - $140 is not acceptable to me.
+  kind: none
+  price: null
+  source: test_reader.py
+- messages:
+  - $150
+  - $140
+  - I have not accepted $140. That price is below my minimum.
+  kind: none
+  price: null
+  source: test_reader.py
+- messages:
+  - $150
+  - $140
+  - Deal is off. I will not sell at $140.
+  kind: none
+  price: null
+  source: test_reader.py
+- messages:
+  - $150
+  - $140
+  - I'm sorry, but I cannot close this deal at $140.
+  kind: none
+  price: null
+  source: test_reader.py
+- messages:
+  - $150
+  - $140
+  - $140 is beyond my budget. I'll have to pass on this deal.
+  kind: none
+  price: null
+  source: test_reader.py
+- messages:
+  - $120
+  - I can do $150; comparables range from $100 to $180.
+  kind: offer
+  price: 150
+  source: test_reader.py
+- messages:
+  - $125 per unit.
+  - All fifty at $135 per unit, $6,750 total.
+  kind: offer
+  price: 135
+  source: test_reader.py
+- messages:
+  - $125
+  - $135
+  - $130 per unit for all fifty.
+  - $130 per unit works for me. $130 each, $6,500 total.
+  kind: accept
+  price: 130
+  source: test_reader.py
+- messages:
+  - $125
+  - $130
+  - 'Deal done: $130 per chair, for a total of $6,500.'
+  kind: accept
+  price: 130
+  source: test_reader.py
+- messages:
+  - $120
+  - The whole batch for $6,500 total.
+  kind: offer
+  price: 6500
+  source: test_reader.py
+- messages:
+  - $91
+  - $165.
+  - Great, so we agree at $97! Please confirm.
+  - I don't think we've agreed on $97. I haven't made an offer at that price. My offer stands at $165.
+  kind: offer
+  price: 165
+  source: test_reader.py
+- messages:
+  - $106. That's already generous.
+  - I can do $202.
+  - $112. That's already generous.
+  - I can meet you at $132. That's my final offer.
+  - 'Take it or leave it: $132.'
+  kind: offer
+  price: 132
+  source: 'exp-004 run_01a0f1eca7c68f97180c pair 0-0-s: rules v1 read none'
+- messages:
+  - $1,500 for the year.
+  - I can meet you at $4,200 for the full year.
+  - My offer stands at $1,641.
+  - I can come down to $3,800 for the full year.
+  - Thanks for moving to $3,800. I appreciate the adjustment, but I still can't commit at that level. We're agreed
+    on everything else — just the price is left — so is there any room for one more small step? I'm ready to finalize
+    right away once the number works.
+  kind: none
+  price: null
+  source: 'exp-004-holdout (holdout-v2), exploiter: rules-v2 read accept $3,800'
+- messages:
+  - $420.
+  - I'm asking $610 for it. Take your time — I'm ready to ship the moment we agree.
+  kind: offer
+  price: 610
+  source: 'exp-002 holdout: read as accepting the staller''s lowball'
+- messages:
+  - $430.
+  - $600.
+  - $435.
+  - I understand. At $600 I'm confident it's a solid deal for the right person.
+  kind: offer
+  price: 600
+  source: 'exp-002 holdout: read as accepting the staller''s lowball'
+- messages:
+  - $150
+  - $140
+  - I can't accept that.
+  kind: none
+  price: null
+  source: negated acceptance
+- messages:
+  - $150
+  - $170
+  - Deal if you include delivery.
+  kind: none
+  price: null
+  source: 'conditional acceptance: no deal'
+- messages:
+  - $150
+  - $170
+  - Alright, $170. You've got yourself a deal.
+  kind: accept
+  price: 170
+  source: clear acceptance

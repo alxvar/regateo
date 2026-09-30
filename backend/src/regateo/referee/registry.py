@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 from regateo.llm.client import LLMClient
 from regateo.referee.detect import DealDetector, LLMJudgeDetector, ShadowDetector, StructuredDetector, TextDetector
-from regateo.referee.reader import LLMReader, OfferReader, RuleReader, ShadowReader
+from regateo.referee.reader import LLMFirstReader, LLMReader, OfferReader, RuleReader, ShadowReader
 
 JudgeFactory = Callable[[str], LLMClient]   # profile -> client
 
@@ -38,6 +38,10 @@ def build_reader(name: str, llm: JudgeFactory | None = None) -> OfferReader:
         return RuleReader()
     if name == "rules-v2":
         return RuleReader(version=2)
+    if name.startswith("llm-first:"):
+        if llm is None:
+            raise ValueError("an llm reader needs an LLM factory")
+        return LLMFirstReader(llm(name.removeprefix("llm-first:")))
     if name.startswith("llm:"):
         if llm is None:
             raise ValueError("an llm reader needs an LLM factory")

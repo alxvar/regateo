@@ -192,3 +192,12 @@ async def test_rules_v2_never_accepts_a_stale_price():
 def test_rules_v2_keeps_v1_readings(texts, kind, price, ambiguous):
     r = read_all_v2(*texts)[-1].reading
     assert (r.kind, r.price, r.ambiguous) == (kind, price, ambiguous)
+
+
+async def test_reader_eval_scores_the_corpus():
+    from regateo.referee.evaluate import evaluate, load_corpus
+    cases = load_corpus()
+    assert len(cases) > 30
+    v1, v2 = await evaluate(RuleReader(), "rules"), await evaluate(RuleReader(version=2), "rules-v2")
+    assert v1.cases == v2.cases == len(cases)
+    assert v2.correct > v1.correct                          # the exp-004 case

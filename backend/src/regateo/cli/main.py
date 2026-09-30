@@ -354,6 +354,26 @@ def climb(
     asyncio.run(go())
 
 
+@app.command("reader-eval")
+def reader_eval(
+    readers: Annotated[list[str], typer.Argument(help="readers to score, e.g. rules-v2 llm-first:qwen-local")],
+) -> None:
+    """Score message readers on the labeled corpus (configs/referee/reading-corpus.yaml)."""
+    from regateo.referee.evaluate import evaluate
+    from regateo.referee.registry import build_reader
+
+    async def go() -> None:
+        for name in readers:
+            s = await evaluate(build_reader(name, get_client), name)
+            typer.echo(f"{name}: {s.correct}/{s.cases} correct, {s.false_accepts} false acceptances, "
+                       f"{s.missed_accepts} missed acceptances")
+            for m in s.misses:
+                typer.echo(f"  - expected {m.case.kind.value} {m.case.price}, got {m.got_kind.value} {m.got_price}"
+                           f"  ({m.case.source}) {m.case.messages[-1][:90]!r}")
+
+    asyncio.run(go())
+
+
 @app.command()
 def freeze(paths: Annotated[list[Path], typer.Argument(help="files to freeze, e.g. a prompt with results")]) -> None:
     """Record files in configs/frozen.json; a unit test then fails if they change."""

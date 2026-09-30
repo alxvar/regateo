@@ -50,3 +50,30 @@ matches, so a rerun with working coupling should measure it almost without noise
 (restating our $132); rules v1 read it as nothing, and our "Deal." closed at its older $112, below our $127.80 limit.
 The veto checked the price our decision named ($132), not the offer as read. Both are fixed: the veto checks both
 (`o2.py`), and the `rules-v2` reader (bench `standard-v2`) never closes at a stale price.
+
+### Rerun on standard-v2, coupling working (run_01a0f209513322a2fb07, 240 pairs)
+
+| Challenger | vs reference | 95% range | Veto fired | Pairs identical to the reference |
+|---|---|---|---|---|
+| o2/quiet-words | −0.001 | [−0.013, +0.010] | 30 matches | 231 of 240 |
+| o2/quiet-words-strict | +0.001 | [−0.034, +0.037] | 160 matches | 121 of 240 |
+
+No deal past the limit for either, deals within own limit 67% for all three.
+
+- **Coupling works.** Every pair that differs from the reference is one where the veto fired; before the fix, 237 of
+  240 differed. The reader veto's range is ±0.012 at 240 pairs, against about ±0.05 uncoupled: a 4× narrower
+  interval, worth about 16× the matches.
+- **Both vetoes cost nothing measurable.** The reader veto is pinned within ±0.013 of the reference; the strict one
+  rewrites two thirds of matches and lands within ±0.036.
+- **The gain check can't pass a guardrail.** A change whose purpose is safety, with zero cost, never shows p < 0.05
+  on share. For guardrails the rule should be non-inferiority: the lower end of the 95% range above −0.02, plus the
+  safety gain it exists for, measured where the failure happens (here: misread acceptances on the holdout).
+  By that rule the reader veto qualifies on dev (−0.013 > −0.02); the strict one isn't shown yet (−0.034).
+
+### Holdout (run_01a0f213084c97b05285, holdout-v2, 120 pairs)
+
+o2/quiet-words vs the reference: +0.000 [−0.031, +0.031], no deal past the limit for either, 72.5% deals for both.
+**Not trustworthy yet:** the rules-v2 reader read the exploiter persona's "we're agreed on everything else, but I
+still can't commit at that level" as accepting $3,800, closing a deal the buyer had refused. The exploiter is built
+to use agreement words, so its pairings are the ones most affected (share 0.57–0.63, range ±0.32). This led to the
+LLM-first reader (`llm-first:<profile>`, docs/04 §6), and holdout-v2 should be rerun with it before this result counts.

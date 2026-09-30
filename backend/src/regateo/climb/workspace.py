@@ -108,7 +108,8 @@ class Candidate(BaseModel):
     prompt: str | None = None                         # file in the candidate folder: a new version of the prompt
 
 
-def adopt(folder: Path, parent: str | None = None) -> tuple[list[Written], list[Rejected]]:
+def adopt(folder: Path, parent: str | None = None,
+          known: dict[str, str] | None = None) -> tuple[list[Written], list[Rejected]]:
     """Turn `candidates/<name>/candidate.yaml` (plus an optional new prompt) into agent configs.
     `parent` defaults to the agent the workspace was made from."""
     parent = parent or workspace_meta(folder)["parent"]
@@ -129,7 +130,7 @@ def adopt(folder: Path, parent: str | None = None) -> tuple[list[Written], list[
                                       **c.changes))
         except Exception as e:                          # a bad candidate is dropped, not repaired
             rejected.append(Rejected(proposal=Proposal(name=d.name, failure="?", hypothesis="?"), reasons=[str(e)]))
-    written, bad = write(proposals, parent, source="an agentic proposer (regateo workspace)")
+    written, bad = write(proposals, parent, source="an agentic proposer (regateo workspace)", known=known)
     return written, rejected + bad
 
 

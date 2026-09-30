@@ -6,7 +6,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from regateo.climb.mine import mine
-from regateo.climb.propose import Rejected, Written, ask, log, write, write_experiment
+from regateo.climb.propose import Rejected, Written, ask, known_agents, log, write, write_experiment
 from regateo.core.config import REPO_DIR, configs_dir, load_yaml
 from regateo.gym import GymSpec, build_gym_report, run_gym
 from regateo.gym.report import ChallengerStats, GymReport
@@ -40,11 +40,11 @@ def _by_agent(report: GymReport, spec: GymSpec) -> dict[str, ChallengerStats]:
 
 
 async def climb_round(store: Store, *, from_run: str, parent: str, reference: str, subject: str = "b",
-                      bench: str = "standard-v1", n: int = 6, proposer: str = "qwen-local-propose",
+                      bench: str = "standard-v2", n: int = 6, proposer: str = "qwen-local-propose",
                       on_progress: Progress | None = None) -> RoundResult:
     bundle = await mine(store, from_run, subject=subject)
     proposals = await ask(get_client(proposer), bundle, n=n)
-    written, rejected = write(proposals, parent)
+    written, rejected = write(proposals, parent, known=await known_agents(store))
     out = RoundResult(written=written, rejected=rejected)
     if not written:
         return out

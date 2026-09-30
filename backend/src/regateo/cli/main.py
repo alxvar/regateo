@@ -252,18 +252,19 @@ def propose(
     subject: str = "b",
     n: Annotated[int, typer.Option(help="challengers to ask for")] = 6,
     proposer: Annotated[str, typer.Option(help="model profile that proposes")] = "qwen-local-propose",
-    bench: str = "standard-v1",
+    bench: str = "standard-v2",
     db: DbOpt = None,
 ) -> None:
     """Ask a local model for challengers from a run's failures; write their configs and a gym."""
     from regateo.climb.mine import mine as mine_run
-    from regateo.climb.propose import ask, write, write_experiment
+    from regateo.climb.propose import ask, known_agents, write, write_experiment
 
     async def go() -> None:
         store = await Store.open(_db(db), readonly=True)
         bundle = await mine_run(store, run_id, subject=subject)
+        known = await known_agents(store)
         await store.close()
-        written, rejected = write(await ask(get_client(proposer), bundle, n=n), parent)
+        written, rejected = write(await ask(get_client(proposer), bundle, n=n), parent, known=known)
         typer.echo(fmt.proposals(written, rejected))
         if written:
             name = write_experiment(written, reference=reference or parent, bench=bench, source_run=run_id)
@@ -295,15 +296,23 @@ def workspace(
 def adopt(
     folder: Annotated[Path, typer.Argument(help="a workspace from `regateo workspace`, with candidates written")],
     reference: Annotated[str | None, typer.Option(help="reference to beat (default: the parent)")] = None,
-    bench: str = "standard-v1",
+    bench: str = "standard-v2",
+    db: DbOpt = None,
 ) -> None:
     """Validate a workspace's candidates; write their configs and a gym (successive halving)."""
-    from regateo.climb.propose import write_experiment
+    from regateo.climb.propose import known_agents, write_experiment
     from regateo.climb.workspace import adopt as adopt_candidates
     from regateo.climb.workspace import workspace_meta
 
+    async def known() -> dict[str, str]:
+        store = await Store.open(_db(db), readonly=True)
+        try:
+            return await known_agents(store)
+        finally:
+            await store.close()
+
     meta = workspace_meta(folder)
-    written, rejected = adopt_candidates(folder)
+    written, rejected = adopt_candidates(folder, known=asyncio.run(known()))
     typer.echo(fmt.proposals(written, rejected))
     if written:
         name = write_experiment(written, reference=reference or meta["parent"], bench=bench,
@@ -320,7 +329,7 @@ def climb(
     rounds: int = 1,
     n: int = 6,
     proposer: str = "qwen-local-propose",
-    bench: str = "standard-v1",
+    bench: str = "standard-v2",
     db: DbOpt = None,
 ) -> None:
     """Unattended rounds: mine, propose, successive halving on the full bench. Promotion stays manual."""

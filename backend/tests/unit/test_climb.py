@@ -20,7 +20,8 @@ def configs(tmp_path, monkeypatch):
     (tmp_path / "agents" / "o1" / "base.yaml").write_text("kind: o1\nmodel: qwen-local\n")
     (tmp_path / "prompts").mkdir()
     (tmp_path / "prompts" / "negotiator_system.v1.md").write_text(V1)
-    (tmp_path / "prompts" / "proposer_system.v1.md").write_text(prompts.path("proposer_system.v1").read_text())
+    for ref in ("proposer_system.v1", "analysis_instructions.v1"):
+        (tmp_path / "prompts" / f"{ref}.md").write_text(prompts.path(ref).read_text())
     (tmp_path / "docs" / "experiments").mkdir(parents=True)
     (tmp_path / "docs" / "experiments" / "007-old.md").write_text("x")
     monkeypatch.setenv("REGATEO_CONFIGS", str(tmp_path))
@@ -146,3 +147,23 @@ async def test_workspace_refuses_holdout_runs(configs):
     store, run_id = await _run(configs, purpose="holdout")
     with pytest.raises(ValueError, match="holdout"):
         await export(store, [run_id], "o1/base", configs / "ws")
+
+
+def test_repeats_are_rejected(configs):
+    from regateo.climb.propose import behaviour_key
+    rule = PromptEdit(find="", replace="Close early when their offer is within 5% of your aim.")
+    first, _ = write([Proposal(name="firm", failure="f", hypothesis="h", fence=True),
+                      Proposal(name="close", failure="f", hypothesis="h", prompt_edit=rule)], "o1/base")
+    known = {behaviour_key(AgentSpec.resolve(w.agent)): f"{w.agent} in exp-1 (run_x)" for w in first}
+    # the same changes under other names; the prompt edit lands in a new file with the same text
+    same = Proposal(name="firm-again", failure="f", hypothesis="h", fence=True)
+    reworded = Proposal(name="close-again", failure="f", hypothesis="h", prompt_edit=rule)
+    fresh = Proposal(name="digest", failure="f", hypothesis="h", state_digest=True)
+    written, rejected = write([same, reworded, fresh, fresh.model_copy(update={"name": "digest-2"})], "o1/base",
+                              known=known)
+    assert [w.agent for w in written] == ["o1/digest"]
+    reasons = {r.proposal.name: r.reasons[0] for r in rejected}
+    assert "o1/firm in exp-1" in reasons["firm-again"] and "o1/close in exp-1" in reasons["close-again"]
+    assert "this batch" in reasons["digest-2"]
+    assert not (configs / "agents" / "o1" / "firm-again.yaml").exists()
+    assert not (configs / "prompts" / "negotiator_system.v3.md").exists()     # the duplicate prompt is removed

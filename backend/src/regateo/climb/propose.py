@@ -7,6 +7,7 @@ learn about the opponents is limited to what they said in dev matches.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -22,6 +23,7 @@ from regateo.climb.mine import Bundle
 from regateo.core.config import REPO_DIR, configs_dir, data_dir
 from regateo.llm.client import LLMClient
 from regateo.llm.types import ChatMessage, LLMRequest
+from regateo.storage.store import Store
 
 PROPOSER_PROMPT = "proposer_system.v1"
 MODELS = ("qwen-local", "qwen-local-think", "qwen-local-pp0")
@@ -150,16 +152,43 @@ def validate(p: Proposal, parent: AgentSpec, taken: set[str]) -> list[str]:
     return reasons
 
 
+def behaviour_key(spec: AgentSpec) -> str:
+    """What an agent does, independent of names: its kind, model profile, settings and the text of its
+    prompts, but not which file a prompt is in. A proposal that copies an earlier agent under a new name,
+    or saves an earlier prompt as a new version, gets the same key."""
+    config = spec.ref().config
+    body = {**config, "params": {k: v for k, v in config["params"].items() if k != "prompt"},
+            "prompts": sorted(config.get("prompts", {}).values())}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+async def known_agents(store: Store) -> dict[str, str]:
+    """Every agent our gym runs have measured, by behaviour key: "<label> in <run name> (<run id>)"."""
+    known: dict[str, str] = {}
+    for run in reversed(await store.list_runs("gym", limit=10000)):
+        specs = [run.config.get("a"), run.config.get("b"), *run.config.get("extra", [])]
+        for raw in filter(None, specs):
+            try:
+                spec = AgentSpec.model_validate(raw)
+                known.setdefault(behaviour_key(spec), f"{spec.label} in {run.name} ({run.id})")
+            except Exception:                        # e.g. a prompt file that no longer exists
+                continue
+    return known
+
+
 def _next_prompt_version(family: str) -> str:
     versions = [int(m.group(1)) for f in prompts.path(f"{family}.v1").parent.glob(f"{family}.v*.md")
                 if (m := re.search(r"\.v(\d+)\.md$", f.name))]
     return f"{family}.v{max(versions, default=0) + 1}"
 
 
-def write(proposals: list[Proposal], parent_name: str,
-          source: str = "the climb loop (regateo propose)") -> tuple[list[Written], list[Rejected]]:
-    """Validate, then write an agent config per good proposal (configs/agents/<kind>/<name>.yaml)."""
+def write(proposals: list[Proposal], parent_name: str, source: str = "the climb loop (regateo propose)",
+          known: dict[str, str] | None = None) -> tuple[list[Written], list[Rejected]]:
+    """Validate, then write an agent config per good proposal (configs/agents/<kind>/<name>.yaml).
+    `known` (from `known_agents`): a proposal that behaves exactly like an agent already measured, or
+    like an earlier proposal in this batch, is rejected and its files removed."""
     parent = AgentSpec.resolve(parent_name)
+    known = {behaviour_key(parent): f"the parent, {parent_name}", **(known or {})}
     written, rejected = [], []
     for p in proposals:
         vetoed = p.checks or p.accept_words
@@ -193,6 +222,14 @@ def write(proposals: list[Proposal], parent_name: str,
         agent = f"{folder.name}/{p.name}"
         spec = AgentSpec.resolve(agent)
         prompt_refs(spec)                                    # fails loudly if a prompt ref is broken
+        key = behaviour_key(spec)
+        if key in known:
+            (folder / f"{p.name}.yaml").unlink()
+            if prompt_file:
+                (prompts.path(f"{family}.v1").parent / prompt_file).unlink()
+            rejected.append(Rejected(proposal=p, reasons=[f"behaves exactly like {known[key]}"]))
+            continue
+        known[key] = f"{agent}, proposed in this batch"
         written.append(Written(proposal=p, agent=agent, prompt_file=prompt_file))
     return written, rejected
 

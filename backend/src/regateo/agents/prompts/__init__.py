@@ -23,9 +23,17 @@ def path(ref: str) -> Path:
     return p
 
 
-@cache
 def _load(ref: str) -> str:
-    return path(ref).read_text()
+    # Keyed by the file's state, not only its name: the climb loop writes, removes and rewrites prompt
+    # versions within one process, and a stale text would render (and fingerprint) the wrong prompt.
+    p = path(ref)
+    st = p.stat()
+    return _read(p, st.st_mtime_ns, st.st_size)
+
+
+@cache
+def _read(p: Path, mtime_ns: int, size: int) -> str:
+    return p.read_text()
 
 
 def render(ref: str, **values: object) -> str:

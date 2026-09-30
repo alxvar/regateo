@@ -62,7 +62,20 @@ export function Run() {
   );
 }
 
-function GymView({ r }: { r: GymReport }) {
+/** Fill fields an older API doesn't send yet, so a server that wasn't restarted degrades instead of crashing. */
+function withDefaults(r: GymReport): GymReport {
+  return {
+    ...r, purpose: r.purpose ?? "dev", tier: r.tier ?? null, source_run: r.source_run ?? null,
+    follow_ups: r.follow_ups ?? [],
+    challengers: (r.challengers ?? []).map((c) => ({
+      ...c, by_opponent: c.by_opponent ?? [], by_role: c.by_role ?? [], by_cell: c.by_cell ?? [],
+      stopped_at: c.stopped_at ?? null, checks: c.checks ?? [],
+    })),
+  };
+}
+
+function GymView({ r: raw }: { r: GymReport }) {
+  const r = withDefaults(raw);
   return r.mode === "benchmark" && r.challengers.length ? <BenchmarkView r={r} /> : <DuelView r={r} />;
 }
 
@@ -205,7 +218,8 @@ function SideCards({ a, b }: { a: SideStats; b: SideStats }) {
 }
 
 function WhereFrom({ groups }: { groups: Partial<Record<"opponent" | "role" | "cell", Breakdown[]>> }) {
-  const keys = Object.keys(groups) as ("opponent" | "role" | "cell")[];
+  const keys = (Object.keys(groups) as ("opponent" | "role" | "cell")[]).filter((k) => groups[k]?.length);
+  if (!keys.length) keys.push("cell");
   const [group, setGroup] = useState(keys[0]);
   const rows = groups[group] ?? [];
   return (

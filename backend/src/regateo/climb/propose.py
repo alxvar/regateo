@@ -100,6 +100,15 @@ def _changes(p: Proposal) -> dict:
             **({"prompt_edit": p.prompt_edit.model_dump()} if p.prompt_edit else {})}
 
 
+def _brief(p: Proposal, prompt_file: str | None = None) -> dict:
+    """`_changes` for a table or log: a rewrite of the whole prompt shows as its new file, not its text."""
+    ch = _changes(p)
+    edit = ch.get("prompt_edit")
+    if edit and len(edit["find"]) > 500:
+        ch["prompt_edit"] = f"prompt rewritten: {prompt_file or 'new version'}"
+    return ch
+
+
 def edited_prompt(p: Proposal, parent: AgentSpec) -> tuple[str | None, list[str]]:
     """The parent's prompt template with the proposal's edit applied, or the reasons it can't be."""
     if not p.prompt_edit:
@@ -194,7 +203,8 @@ def next_experiment() -> tuple[int, Path]:
     return max(nums, default=0) + 1, folder
 
 
-def write_experiment(written: list[Written], *, reference: str, bench: str, source_run: str) -> str:
+def write_experiment(written: list[Written], *, reference: str, bench: str, source_run: str,
+                     by: str = "the climb loop (`regateo propose`, local Qwen)") -> str:
     """A gym config (the full bench, with successive halving and early stopping) and an experiment stub
     for one round. Returns the gym config name."""
     num, folder = next_experiment()
@@ -205,13 +215,13 @@ def write_experiment(written: list[Written], *, reference: str, bench: str, sour
     (configs_dir() / "gym" / f"{name}.yaml").write_text(
         f"# Climb round (docs/experiments/{num:03d}-climb.md), proposed from {source_run}.\n"
         + yaml.safe_dump(gym, sort_keys=False))
-    rows = "\n".join(f"| {w.agent} | {_changes(w.proposal)} | {' '.join(w.proposal.hypothesis.split())} |"
+    rows = "\n".join(f"| {w.agent} | {_brief(w.proposal, w.prompt_file)} | {' '.join(w.proposal.hypothesis.split())} |"
                      for w in written)
     (folder / f"{num:03d}-climb.md").write_text(
         f"# {num:03d}: Climb round from {reference}\n\n"
         f"**Bench:** {bench}, successive halving to the full bench. **Reference:** {reference}. "
         f"**Config:** `backend/configs/gym/{name}.yaml`.\n\n"
-        f"Proposed by the climb loop (`regateo propose`, local Qwen) from the failures in {source_run}. "
+        f"Proposed by {by} from the failures in {source_run}. "
         "Not yet reviewed by a person.\n\n"
         "## Variants\n\n| Challenger | Change | Hypothesis |\n|---|---|---|\n" + rows + "\n\n## Results\n\n(pending)\n")
     return name
@@ -222,5 +232,5 @@ def log(written: list[Written], results: dict[str, str] | None = None) -> None:
     with log_path().open("a") as f:
         for w in written:
             f.write(json.dumps({"agent": w.agent, "hypothesis": " ".join(w.proposal.hypothesis.split()),
-                                "changes": _changes(w.proposal),
+                                "changes": _brief(w.proposal, w.prompt_file),
                                 "result": (results or {}).get(w.agent, "pending")}) + "\n")

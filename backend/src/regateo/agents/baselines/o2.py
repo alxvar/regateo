@@ -106,10 +106,11 @@ def _limit_checks(d: Decision, obs: Observation, *, mentions: bool) -> list[str]
         elif past(d.price):
             problems.append(f"{fmt_price(d.price, v.currency)} is past your walk-away price.")
     elif d.action == "accept":
-        price = d.price if d.price is not None else theirs
-        if price is None:
+        # An acceptance closes at their standing offer as read, whatever price the decision names: check both.
+        prices = [p for p in (d.price, theirs) if p is not None]
+        if not prices:
             problems.append("there is no offer from the other side to accept.")
-        elif past(price):
+        elif any(past(p) for p in prices):
             problems.append("accepting their offer would go past your walk-away price.")
     if mentions:
         found = find_prices(d.message)

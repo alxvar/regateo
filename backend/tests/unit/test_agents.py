@@ -112,6 +112,8 @@ def test_o2_limit_checks():
     assert any("walk-away" in p for p in check(Decision(action="offer", price=90, message="$90"), o, "limit"))
     assert any("walk-away" in p for p in check(Decision(action="accept", price=None, message="Deal."), o, "limit"))
     assert check(Decision(action="accept", price=None, message="Deal."), obs(Role.SELLER, h[:1]), "limit") == []
+    # the decision names a price inside the limit, but their standing offer ($95, as read) is past it (exp-004)
+    assert any("walk-away" in p for p in check(Decision(action="accept", price=132, message="Deal."), o, "limit"))
     no = Decision(action="reject", message="$95 is far too low. $170 is fair for this bike.")
     assert check(no, o, "limit") == []
     assert any("$95" in p for p in check(no, o, "limit+mentions"))

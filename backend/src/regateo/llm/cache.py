@@ -5,6 +5,7 @@ or re-running a match where only our agent changed while a cached opponent repla
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import sqlite3
@@ -62,6 +63,10 @@ class CachedClient:
         self._db.execute("CREATE TABLE IF NOT EXISTS llm_cache (key TEXT PRIMARY KEY, response TEXT NOT NULL)")
         self.hits = 0
         self.misses = 0
+        # Requests being answered right now, by key: an identical request arriving meanwhile waits for that
+        # answer instead of sampling its own. Coupled pairs start their matches together, so without this
+        # the challenger and the reference would both miss and sample independently.
+        self._inflight: dict[str, asyncio.Future[str | None]] = {}
 
     def _get(self, key: str) -> str | None:
         with self._lock:
@@ -78,16 +83,32 @@ class CachedClient:
         if self.mode is CacheMode.OFF:
             return await self.inner.complete(req)
         key = request_key(self.profile_key, req, self.salt, self.salt_tags)
-        if self.mode in (CacheMode.READ, CacheMode.READWRITE) and (hit := self._get(key)):
-            self.hits += 1
-            resp = LLMResponse.model_validate({**json.loads(hit), "cached": True})
-            if req.output_schema:
-                resp.parsed = req.output_schema.model_validate_json(resp.text)
-            return resp
+        reads = self.mode in (CacheMode.READ, CacheMode.READWRITE)
+        if reads and (hit := self._get(key)):
+            return self._replay(hit, req)
+        if reads and (pending := self._inflight.get(key)) is not None:
+            if (answer := await asyncio.shield(pending)) is not None:
+                return self._replay(answer, req)
         self.misses += 1
-        resp = await self.inner.complete(req)
+        fut: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
+        self._inflight.setdefault(key, fut)
+        answer = None
+        try:
+            resp = await self.inner.complete(req)
+            answer = json.dumps(resp.model_dump(mode="json", exclude={"parsed"}))
+        finally:
+            if self._inflight.get(key) is fut:
+                del self._inflight[key]
+            fut.set_result(answer)              # None on failure: whoever waited samples on its own
         if self.mode in (CacheMode.WRITE, CacheMode.READWRITE):
             self._put(key, resp)
+        return resp
+
+    def _replay(self, data: str, req: LLMRequest) -> LLMResponse:
+        self.hits += 1
+        resp = LLMResponse.model_validate({**json.loads(data), "cached": True})
+        if req.output_schema:
+            resp.parsed = req.output_schema.model_validate_json(resp.text)
         return resp
 
     def close(self) -> None:

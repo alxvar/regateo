@@ -273,6 +273,45 @@ def propose(
 
 
 @app.command()
+def workspace(
+    runs: Annotated[list[str], typer.Argument(help="dev benchmark gym runs whose matches it may read")],
+    parent: Annotated[str, typer.Option(help="agent config to improve, e.g. o2/v2-limit-quiet")],
+    out: Annotated[Path, typer.Option(help="empty folder to write the workspace to")],
+    db: DbOpt = None,
+) -> None:
+    """Write a workspace for an agentic proposer: our agent, dev matches and results, nothing else."""
+    from regateo.climb.workspace import export
+
+    async def go() -> None:
+        store = await Store.open(_db(db), readonly=True)
+        await export(store, runs, parent, out)
+        await store.close()
+
+    asyncio.run(go())
+    typer.echo(f"wrote {out}\nNext: bash backend/scripts/claude_proposer.sh {out}, then regateo adopt {out}")
+
+
+@app.command()
+def adopt(
+    folder: Annotated[Path, typer.Argument(help="a workspace from `regateo workspace`, with candidates written")],
+    reference: Annotated[str | None, typer.Option(help="reference to beat (default: the parent)")] = None,
+    bench: str = "standard-v1",
+) -> None:
+    """Validate a workspace's candidates; write their configs and a gym (successive halving)."""
+    from regateo.climb.propose import write_experiment
+    from regateo.climb.workspace import adopt as adopt_candidates
+    from regateo.climb.workspace import workspace_meta
+
+    meta = workspace_meta(folder)
+    written, rejected = adopt_candidates(folder)
+    typer.echo(fmt.proposals(written, rejected))
+    if written:
+        name = write_experiment(written, reference=reference or meta["parent"], bench=bench,
+                                source_run=", ".join(meta["runs"]), by="an agentic proposer (`regateo workspace`)")
+        typer.echo(f"\nNext: regateo gym {name}")
+
+
+@app.command()
 def climb(
     run_id: Annotated[str, typer.Argument(help="dev gym run whose failures to mine")],
     parent: Annotated[str, typer.Option(help="agent config the challengers extend")],

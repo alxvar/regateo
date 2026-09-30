@@ -253,3 +253,17 @@ async def test_challenger_breakdowns_and_follow_ups(tmp_path, monkeypatch):
     assert sum(b.diff.n for b in c.by_opponent) == c.diff.n
     assert [(f.run_id, f.agents) for f in r.follow_ups] == [(full, ["hard"])]
     assert (await build_gym_report(store, full)).source_run == screen
+
+
+async def test_concurrent_identical_requests_share_one_answer(tmp_path):
+    import asyncio
+
+    class Slow(FakeProvider):
+        async def complete(self, req):
+            await asyncio.sleep(0.01)
+            return await super().complete(req)
+
+    inner = Slow(lambda req: f"answer {len(inner.requests)}")
+    cache = CachedClient(inner, tmp_path / "c.db", profile_key="p")
+    a, b = await asyncio.gather(cache.complete(LLMRequest.of("x")), cache.complete(LLMRequest.of("x")))
+    assert a.text == b.text and len(inner.requests) == 1 and b.cached

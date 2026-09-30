@@ -109,3 +109,40 @@ async def test_holdout_runs_are_not_mined(configs):
     store, run_id = await _run(configs, purpose="holdout")
     with pytest.raises(ValueError, match="holdout"):
         await mine(store, run_id)
+
+
+async def test_workspace_export_and_adopt(configs):
+    import json
+
+    import yaml
+
+    from regateo.climb.workspace import adopt, export
+    store, run_id = await _run(configs)
+    ws = await export(store, [run_id], "o1/base", configs / "ws")
+    assert (ws / "agent" / "prompts" / "negotiator_system.v1.md").read_text() == V1
+    assert not list(ws.rglob("persona_*")) and "o1/base" in (ws / "README.md").read_text()
+    lines = (ws / "data" / run_id / "matches.jsonl").read_text().splitlines()
+    m = json.loads(lines[0])
+    assert {"our_limit", "their_limit", "messages", "result"} <= set(m) and m["agent"] in ("boulware", "soft")
+
+    def cand(name, **data):
+        (ws / "candidates" / name).mkdir()
+        (ws / "candidates" / name / "candidate.yaml").write_text(yaml.safe_dump(
+            {"failure": "f", "hypothesis": "h", **data}))
+    cand("think-first", changes={"analysis": True})
+    cand("rewrite", prompt="prompt.md")
+    (ws / "candidates" / "rewrite" / "prompt.md").write_text(V1.replace("negotiating", "bargaining", 1)
+                                                             + "Never open below USD 150.\n")
+    cand("bad-lever", changes={"telepathy": True})
+    written, rejected = adopt(ws)
+    assert sorted(w.agent for w in written) == ["o1/rewrite", "o1/think-first"]
+    assert [r.proposal.name for r in rejected] == ["bad-lever"] and "telepathy" in rejected[0].reasons[0]
+    rewrite = next(w for w in written if w.agent == "o1/rewrite")
+    assert "bargaining" in (configs / "prompts" / rewrite.prompt_file).read_text()
+
+
+async def test_workspace_refuses_holdout_runs(configs):
+    from regateo.climb.workspace import export
+    store, run_id = await _run(configs, purpose="holdout")
+    with pytest.raises(ValueError, match="holdout"):
+        await export(store, [run_id], "o1/base", configs / "ws")

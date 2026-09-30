@@ -1,7 +1,0 @@
-# Experiment 004's candidate on the holdout (promotion checklist step 2). holdout-v2: new opponents,
-# including the exploiter persona, and the rules-v2 reader.
-name: exp-004-holdout
-bench: holdout-v2
-reference: o2/v2-limit-quiet
-challengers: [o2/quiet-words]
-settings: {concurrency: 32, cache: readwrite}

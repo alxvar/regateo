@@ -1,0 +1,7 @@
+# The first measurement of the baseline on the dev bench, against plain O1 (one model call, no strategy
+# prompt, no vetoes), so the baseline's numbers have a reference point.
+name: baseline
+bench: standard-v1
+reference: o1-qwen
+challengers: [baseline]
+settings: {concurrency: 32, cache: readwrite}

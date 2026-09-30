@@ -1,3 +1,0 @@
-# Lever 1a: thinking on (vLLM reasoning), everything else as o1-qwen.
-extends: o1-qwen
-model: qwen-local-think

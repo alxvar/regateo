@@ -69,8 +69,12 @@ def log_path() -> Path:
 
 
 def tried() -> str:
-    """What was tried already: the experiment log in the docs, and every climb round's results."""
+    """What was tried already: the learnings from before the baseline, the experiment log in the docs,
+    and every climb round's results."""
     parts = []
+    learnings = REPO_DIR / "docs" / "05-learnings.md"
+    if learnings.exists():
+        parts.append(learnings.read_text().strip())
     readme = REPO_DIR / "docs" / "experiments" / "README.md"
     if readme.exists() and "## Log" in (text := readme.read_text()):
         parts.append(text.split("## Log", 1)[1].strip())

@@ -1,5 +1,0 @@
-# Proposed by the climb loop (regateo propose). Targets: Match 1 & 4: The model repeatedly offers the same price ($193) when the opponent offers a low price ($75, $82, $105). The 'limit+mentions' check vetoes these because the message often references the opponent's low price or fails to move, leading to stalemates.
-# Hypothesis: The model is 'stuck' because it interprets 'hold firm' as repeating the exact same number. It fails to make the small, shrinking concessions required to bridge the gap. Explicitly forbidding repeated offers and forcing a new price on every 'offer' action will prevent the stalemate loop.
-extends: o2/v2-limit-quiet
-params:
-  prompt: negotiator_system.v4

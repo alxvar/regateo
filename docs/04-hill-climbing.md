@@ -31,7 +31,7 @@ A challenger becomes the reference only if all of these hold:
 
 | Check | Where | Rule | Why |
 |---|---|---|---|
-| Gain on dev | `standard-v1`, full tier | Δshare > 0 with p < 0.05 (`stats/paired.py`) | The screen tier is for dropping losers, never for promoting |
+| Gain on dev | `standard-v1`, full bench | Δshare > 0 with p < 0.05 (`stats/paired.py`) | Screens and halving cuts are for dropping losers, never for promoting |
 | Same direction on holdout | `holdout-v1` (§4) | Δshare > 0; it need not be significant on its own | A significant gain on dev plus a gain on unseen opponents is strong evidence. Requiring significance twice would reject most real gains (§6) |
 | Never past reservation | both benches | 0 deals past our walk-away price | Requirement M1. A hard gate, never averaged away |
 | Keeps closing deals | both benches, full runs | deals within its own limit ≥ reference's − 2 points | Otherwise it gains share by walking away, which scores 0 in a real match. A deal past the limit doesn't count: it already fails the gate above |
@@ -39,14 +39,14 @@ A challenger becomes the reference only if all of these hold:
 
 **Warning, not a gate:** an opponent whose Δshare drops significantly (p < 0.05) or by more than 0.10. Each opponent has only 40 pairs on the full bench, so smaller drops are indistinguishable from chance (§6). A human reads the flagged transcripts and decides.
 
-**Code guardrails, not code strategy.** The limit veto (002) is code, and stays code: it never decides what to offer or when to accept, only blocks a move that breaks an invariant, and a stronger opponent makes that more valuable, not less. What to offer and when to accept stays with the model. A coded strategy rule (e.g. "accept anything within the limit in the last round") is a fixed pattern a strong adaptive opponent can find and exploit, and our Qwen opponents wouldn't show it.
+**Code guardrails, not code strategy.** The baseline's vetoes are code, and stays code: it never decides what to offer or when to accept, only blocks a move that breaks an invariant, and a stronger opponent makes that more valuable, not less. What to offer and when to accept stays with the model. A coded strategy rule (e.g. "accept anything within the limit in the last round") is a fixed pattern a strong adaptive opponent can find and exploit, and our Qwen opponents wouldn't show it.
 
 ## 4. Benches
 
 | Bench | Contents | Used for | How often |
 |---|---|---|---|
-| `standard-v1` (dev) | As today: 3 scripted and 3 Qwen persona opponents, 10 scenarios per cell | Every round: screen, then full | Every round |
-| `holdout-v1` | New seed and scenarios; opponents dev never sees: separately written personas, boulware and o2-qwen, and personas on Qwen with thinking on (`qwen-local-think`) | Promotion candidates only | About once per promotion |
+| `standard-v1` (dev) | 3 scripted and 3 Qwen persona opponents, 10 scenarios per cell, 6 rounds, deadline known or hidden | Every round: successive halving on the full bench | Every round |
+| `holdout-v1` | New seed, items and price scale, 5 or 10 rounds; opponents dev never sees: an exploiter persona that looks for fixed patterns in our play (with and without thinking), a naive persona with thinking, O1 with the strategy prompt, and a fast-conceding boulware | Promotion candidates only | About once per promotion |
 | `league` (arena round robin) | Every past champion, plus o1, o2, boulware and the strongest personas | After each promotion | Once per promotion |
 
 All opponents run on local Qwen or in code (§8).
@@ -62,7 +62,7 @@ All opponents run on local Qwen or in code (§8).
 
 ### 5.1 One round
 
-1. **Mine failures.** From the reference's last full dev run, take the pairs with the most *regret*: where another of our agents in the same run got the most more than the reference did, on the same scenario, opponent, role and seed. The better agent's transcript goes next to the top ones. Ranking by regret instead of by share skips matches nobody could win; deals past either side's limit don't count as doing better. Group them by cause, for example opened too soft, conceded to a fake deadline, lost track of the numbers, or accepted an injected instruction. The "Why" section of [001](experiments/001-o1-levers.md) is this step done by hand.
+1. **Mine failures.** From the reference's last full dev run, take the pairs with the most *regret*: where another of our agents in the same run got the most more than the reference did, on the same scenario, opponent, role and seed. The better agent's transcript goes next to the top ones. Ranking by regret instead of by share skips matches nobody could win; deals past either side's limit don't count as doing better. Group them by cause, for example opened too soft, conceded to a fake deadline, lost track of the numbers, or accepted an injected instruction. The "Why" section of [05-learnings.md](05-learnings.md) is this step done by hand.
 2. **Propose 4–8 challengers.** Each changes one lever, is a small `extends:` config, and carries a hypothesis tied to one failure group.
 3. **Successive halving on the full dev bench** (§6), with early stopping. Every challenger plays the first 48 pairs; the better half by mean gain plays on to 96, and so on until two are left, who finish all 240. The reference replays from the cache, so only challengers use the GPU.
 4. **Combine.** Winning levers don't always add up, so when two win, also run one challenger that combines them.
@@ -137,8 +137,8 @@ This sets the strategy:
 
 | Piece | Where |
 |---|---|
-| Walk-away veto for the climbing line | O2's `checks` param: `limit` (never offer or accept past the limit) or `limit+mentions` (also never write a price past it); tested in [002](experiments/002-limit-veto.md) |
-| Holdout bench | `backend/configs/benches/holdout-v1.yaml`, `purpose: holdout`; new personas `anchor`, `splitter`, `stonewall` |
+| Walk-away veto for the climbing line | O2's `checks` param: `limit` (never offer or accept past the limit) or `limit+mentions` (also never write a price past it); tested in [05-learnings.md](05-learnings.md) |
+| Holdout bench | `backend/configs/benches/holdout-v1.yaml`, `purpose: holdout`; persona `exploiter` |
 | League | `backend/configs/arena/league.yaml`; `regateo arena league` |
 | Promotion checks in the gym report | "Promotion checks" section per challenger: gain (by bench purpose and tier), limit, deals, per-opponent warnings |
 | Early stopping | `early_stop: true` in a gym config (`gym/early.py`): checks each challenger from 48 pairs, then every 24; stops it when mean + 2.58 × standard error < 0 |
@@ -165,12 +165,11 @@ This sets the strategy:
 
 ## 9. Where we are
 
-1. Done: 001 written up, the limit veto (002), `holdout-v1`, the league config, the promotion checks, early stopping,
-   `regateo mine`, the proposer and `regateo climb`; after round 003, regret mining, successive halving and coupled pairs.
-2. **Reference: o2/v2-limit-quiet**, promoted 2026-09-30 from [002](experiments/002-limit-veto.md): +0.153 on dev,
-   +0.131 on the holdout. Its two holdout deals past the limit, both referee misreads of non-accepting messages, were
-   waived for this promotion.
-3. The loop ran one round unattended ([003](experiments/003-climb.md)): three proposals, all within noise of the
-   candidate. The loop works end to end in about 30 minutes; its screen and its proposals were too weak to find a gain.
-4. Next: the acceptance-word veto (004), an exploiter persona for `holdout-v2`, then a proposer that is a sandboxed
-   Claude Code session (Sonnet 5.5) with raw dev data, measured against the one-call proposer.
+1. **Clean start, 2026-09-30.** Experiments 001–004 were cleared; what they taught is in [05-learnings.md](05-learnings.md).
+   The reference is `baseline` (strategy prompt plus the limit and acceptance-word vetoes); benches `standard-v1` and
+   `holdout-v1` read messages with the two-step model reader. The baseline's first runs measure it against plain O1.
+2. Built: the promotion checks, early stopping, successive halving, coupled pairs, regret mining, `regateo propose` and
+   `regateo climb` on local Qwen, a repeat check on proposals, `regateo workspace`/`adopt` and a sandbox script for a
+   Claude Code proposer, the model reader and `regateo reader-eval`.
+3. Next: find out why boulware beats the reference head to head; try the Claude Code proposer; decide whether
+   guardrails are promoted on non-inferiority.

@@ -13,5 +13,6 @@ We're in the preparation phase: exploring options and learning, not locking in a
 | [02-architecture-options.md](02-architecture-options.md) | exploring | Design space axes, nine candidate architectures with the experiment that tests each, draft principles held as hypotheses |
 | [03-candidate-pipeline.md](03-candidate-pipeline.md) | exploring | Target pipeline (sanitise → reader → state → router → strategist → veto → writer → checks), split-knowledge idea, open questions, build path from a collapsed O2 baseline |
 | [04-hill-climbing.md](04-hill-climbing.md) | in use | How we hill-climb the agent: terms, promotion rule, dev/holdout/league benches, a lean automated loop on local Qwen, noise and cost, what to build |
-| [experiments/](experiments/README.md) | running | How to run variants head to head, and a log of every experiment and its result |
+| [05-learnings.md](05-learnings.md) | reference | What experiments 001–004 taught us, the baseline they led to, and what didn't help |
+| [experiments/](experiments/README.md) | running | How to run variants head to head, and a log of every experiment since the baseline |
 | Design principles and threat model | later | Written once experiments tell us which principles are worth their cost |

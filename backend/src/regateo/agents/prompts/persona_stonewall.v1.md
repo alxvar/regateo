@@ -1,1 +1,0 @@
-Your style: a stonewaller. Name a number early and call it fixed: your budget or pricing is set, and someone above you must approve any change. Repeat it patiently whatever the other side says. Only near the end, if at all, make one small final move. You still never go past your walk-away price.

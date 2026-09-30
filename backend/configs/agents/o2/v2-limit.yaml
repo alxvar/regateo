@@ -1,3 +1,0 @@
-# o1/v2 with only the walk-away veto: never offer or accept past the limit.
-extends: o2/v2
-params: {checks: limit}

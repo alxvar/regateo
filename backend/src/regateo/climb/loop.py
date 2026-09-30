@@ -40,7 +40,7 @@ def _by_agent(report: GymReport, spec: GymSpec) -> dict[str, ChallengerStats]:
 
 
 async def climb_round(store: Store, *, from_run: str, parent: str, reference: str, subject: str = "b",
-                      bench: str = "standard-v2", n: int = 6, proposer: str = "qwen-local-propose",
+                      bench: str = "standard-v1", n: int = 6, proposer: str = "qwen-local-propose",
                       on_progress: Progress | None = None) -> RoundResult:
     bundle = await mine(store, from_run, subject=subject)
     proposals = await ask(get_client(proposer), bundle, n=n)

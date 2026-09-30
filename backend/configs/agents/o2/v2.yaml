@@ -1,4 +1,0 @@
-# O1 with the strategy prompt (o1/v2), plus O2's original code veto: limits, no walking back,
-# no stray or leaked prices.
-extends: o1/v2
-kind: o2

@@ -1,0 +1,11 @@
+# The baseline (docs/05-learnings.md): O1's single model call with the strategy prompt, plus O2's code
+# vetoes as guardrails. They never decide what to offer or when to accept; they only stop a move that
+# breaks an invariant:
+# - checks: limit+mentions   never offer or accept past the walk-away price, and never write a price past it
+# - accept_words: reader     a message that doesn't accept must not read as accepting
+kind: o2
+model: qwen-local
+params:
+  prompt: negotiator_system.v2
+  checks: limit+mentions
+  accept_words: reader

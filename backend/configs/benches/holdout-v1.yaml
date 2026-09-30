@@ -1,31 +1,30 @@
-# The holdout bench: only for promotion candidates (docs/04-hill-climbing.md §4). Nobody mines its
-# transcripts for ideas; after about 5 promotions, or once it has shaped a design choice, it retires
-# into dev and holdout-v2 replaces it. Frozen once it has results.
+# The holdout bench (docs/04-hill-climbing.md §4): only for promotion candidates. Nobody mines its
+# transcripts for ideas; after about 5 promotions, or once it has shaped a design choice, it retires into
+# dev and holdout-v2 replaces it. Frozen once it has results.
 #
-# Everything differs from standard-v1: seed, items, a price scale about 5x larger, 8 rounds instead of 6,
-# and opponents dev never plays (three new personas, one of them with Qwen thinking on, O2, boulware,
-# and a scripted staller).
-# 2 cells x 6 scenarios x 6 opponents x 2 roles = 144 pairs per challenger.
+# Everything differs from standard-v1: seed, items, a price scale about 20x larger, 5 or 10 rounds, and
+# opponents dev never plays. Two of them look for fixed patterns in our play and exploit them (the
+# concern of a stronger, adaptive opponent), one with Qwen thinking on.
+# 2 cells x 6 scenarios x 5 opponents x 2 roles = 120 pairs per challenger.
 purpose: holdout
 mode: benchmark
 opponents:
-  - {kind: "persona:anchor", model: qwen-local-think}
-  - {kind: "persona:splitter", model: qwen-local}
-  - {kind: "persona:stonewall", model: qwen-local}
-  - o2-qwen
-  - boulware
-  - scripted:staller
+  - {kind: "persona:exploiter", model: qwen-local-think}
+  - {kind: "persona:exploiter", model: qwen-local}
+  - {kind: "persona:naive", model: qwen-local-think}
+  - {kind: o1, model: qwen-local, name: o1-strategy, params: {prompt: negotiator_system.v2}}
+  - {kind: boulware, params: {boulware: 0.5}}
 scenarios:
-  items: ["a second-hand espresso machine", "a used electric guitar", "a pallet of printer toner",
-          "a three-month consulting retainer"]
-  seller_reservation: [400, 650]
-  zopa: [40, 300]
-  market_margin: [75, 200]
+  items: ["a used cargo van", "a restored vintage motorcycle", "a year of office-space subletting",
+          "a batch of refurbished laptops"]
+  seller_reservation: [1500, 4000]
+  zopa: [150, 1500]
+  market_margin: [300, 1200]
   per_cell: 6
   info_modes: [private]
-  max_rounds: [8]
-  deadline_known: [true, false]
+  max_rounds: [5, 10]
+  deadline_known: [true]
 protocol: freetext
 detector: text
-reader: shadow:rules+llm:qwen-local     # same reading as standard-v1
-seed: 11
+reader: shadow:llm-first:qwen-local/qwen-local-think+rules-v2   # same reading as standard-v1
+seed: 17

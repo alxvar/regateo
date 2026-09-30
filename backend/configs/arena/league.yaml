@@ -3,9 +3,8 @@
 # older one, find out why before the next round.
 name: league
 roster:
-  - o1-qwen                  # reference until the first promotion
-  - o1/v2
-  - o2/v2-limit-quiet        # champion 1 (experiment 002)
+  - baseline                 # the reference; add each promoted agent below it
+  - o1-qwen
   - o2-qwen
   - boulware
   - {kind: "persona:tough", model: qwen-local, name: tough-qwen}
@@ -13,6 +12,6 @@ games_per_pair: 10
 scenarios: {per_cell: 5, info_modes: [private], max_rounds: [6], deadline_known: [true, false]}
 protocol: freetext
 detector: text
-reader: shadow:rules+llm:qwen-local
+reader: shadow:llm-first:qwen-local/qwen-local-think+rules-v2
 seed: 5
 settings: {concurrency: 32, cache: readwrite}

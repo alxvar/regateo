@@ -247,12 +247,12 @@ def mine(
 @app.command()
 def propose(
     run_id: str,
-    parent: Annotated[str, typer.Option(help="agent config the challengers extend, e.g. o2/v2-limit")],
+    parent: Annotated[str, typer.Option(help="agent config the challengers extend, e.g. baseline")],
     reference: Annotated[str | None, typer.Option(help="reference for the gym (default: the parent)")] = None,
     subject: str = "b",
     n: Annotated[int, typer.Option(help="challengers to ask for")] = 6,
     proposer: Annotated[str, typer.Option(help="model profile that proposes")] = "qwen-local-propose",
-    bench: str = "standard-v2",
+    bench: str = "standard-v1",
     db: DbOpt = None,
 ) -> None:
     """Ask a local model for challengers from a run's failures; write their configs and a gym."""
@@ -276,7 +276,7 @@ def propose(
 @app.command()
 def workspace(
     runs: Annotated[list[str], typer.Argument(help="dev benchmark gym runs whose matches it may read")],
-    parent: Annotated[str, typer.Option(help="agent config to improve, e.g. o2/v2-limit-quiet")],
+    parent: Annotated[str, typer.Option(help="agent config to improve, e.g. baseline")],
     out: Annotated[Path, typer.Option(help="empty folder to write the workspace to")],
     db: DbOpt = None,
 ) -> None:
@@ -296,7 +296,7 @@ def workspace(
 def adopt(
     folder: Annotated[Path, typer.Argument(help="a workspace from `regateo workspace`, with candidates written")],
     reference: Annotated[str | None, typer.Option(help="reference to beat (default: the parent)")] = None,
-    bench: str = "standard-v2",
+    bench: str = "standard-v1",
     db: DbOpt = None,
 ) -> None:
     """Validate a workspace's candidates; write their configs and a gym (successive halving)."""
@@ -329,7 +329,7 @@ def climb(
     rounds: int = 1,
     n: int = 6,
     proposer: str = "qwen-local-propose",
-    bench: str = "standard-v2",
+    bench: str = "standard-v1",
     db: DbOpt = None,
 ) -> None:
     """Unattended rounds: mine, propose, successive halving on the full bench. Promotion stays manual."""

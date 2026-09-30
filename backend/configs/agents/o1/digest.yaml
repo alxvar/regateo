@@ -1,3 +1,0 @@
-# Lever 3: a private summary of the offers and messages left, added each turn.
-extends: o1-qwen
-params: {state_digest: true}

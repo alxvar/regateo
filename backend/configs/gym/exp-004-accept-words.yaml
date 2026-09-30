@@ -1,0 +1,8 @@
+# Experiment 004 (docs/experiments/004-accept-words.md): can a veto on acceptance words stop
+# non-accepting messages from being read as acceptances, at no cost in share?
+name: exp-004-accept-words
+bench: standard-v1
+reference: o2/v2-limit-quiet
+challengers: [o2/quiet-words, o2/quiet-words-strict]
+early_stop: true
+settings: {concurrency: 32, cache: readwrite}

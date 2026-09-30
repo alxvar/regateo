@@ -119,6 +119,17 @@ def test_o2_limit_checks():
                  "limit+mentions") == []
 
 
+def test_o2_accept_word_check():
+    from regateo.agents.baselines.o2 import accept_word_check
+    chat = Decision(action="offer", price=150, message="Take your time, ready to ship the moment we agree. $150.")
+    solid = Decision(action="offer", price=150, message="At $150 I'm confident it's a solid deal for the right person.")
+    refuse = Decision(action="reject", price=None, message="I can't accept that.")
+    assert accept_word_check(chat, "reader") and accept_word_check(solid, "reader")
+    assert accept_word_check(refuse, "reader") == [] and accept_word_check(refuse, "strict")
+    assert accept_word_check(Decision(action="accept", price=None, message="Deal, agreed."), "strict") == []
+    assert accept_word_check(Decision(action="offer", price=150, message="I can do $150."), "strict") == []
+
+
 def test_o2_rejects_unknown_checks():
     with pytest.raises(ValueError, match="unknown checks"):
         build_agent(AgentSpec(kind="o2", model="fake", params={"checks": "some"}), S.view_for(Role.SELLER),

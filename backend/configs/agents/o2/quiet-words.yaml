@@ -1,0 +1,4 @@
+# o2/v2-limit-quiet, and a message that doesn't accept must not read as accepting to our rules reader
+# (experiment 004).
+extends: o2/v2-limit-quiet
+params: {accept_words: reader}

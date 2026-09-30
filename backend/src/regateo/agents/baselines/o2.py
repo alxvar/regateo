@@ -5,6 +5,8 @@ A failed check gets one retry with feedback, then the move is repaired determini
 """
 from __future__ import annotations
 
+import re
+
 from regateo.agents.base import AgentContext, AgentSpec, register
 from regateo.agents.baselines.o1 import Decision, EndToEndAgent
 from regateo.agents.common import fmt_price, opening_price, our_offers, safe_fallback, standing_offer
@@ -14,6 +16,7 @@ from regateo.core.roles import sign
 from regateo.core.scenario import PrivateView
 from regateo.llm.errors import LLMError
 from regateo.referee.prices import find_prices, stated_prices
+from regateo.referee.reader import is_acceptance
 
 TOL = 0.005
 
@@ -23,6 +26,23 @@ def _near(a: float, b: float) -> bool:
 
 
 CHECKS = ("all", "limit", "limit+mentions")
+ACCEPT_WORDS = ("reader", "strict")
+
+# Any agreement vocabulary, negated or not: "I can't accept", "the moment we agree", "a solid deal".
+_AGREEMENT = re.compile(r"\b(?:accept\w*|agree\w*|deal\w*|sold|works for me|sounds good|let's do it)\b", re.IGNORECASE)
+
+
+def accept_word_check(d: Decision, mode: str) -> list[str]:
+    """A message that doesn't accept must not read as accepting: a platform reading free text may hold us
+    to "ready to ship the moment we agree" (experiment 002's holdout). "reader": what our referee's rules
+    reader takes as an acceptance; "strict": any agreement vocabulary, since other readers may differ."""
+    if d.action == "accept":
+        return []
+    hit = is_acceptance(d.message) if mode == "reader" else bool(_AGREEMENT.search(d.message))
+    if not hit:
+        return []
+    return ["the message could be read as accepting their offer, but you are not accepting. Don't use words like "
+            "'deal', 'agree', 'accept', 'sounds good' or 'works for me' unless you accept."]
 
 
 def check(d: Decision, obs: Observation, checks: str = "all") -> list[str]:
@@ -119,7 +139,8 @@ def repair(d: Decision, obs: Observation) -> Decision:
 
 
 class VetoedAgent(EndToEndAgent):
-    """Params: as O1, plus `checks` ("all" by default; see `check`)."""
+    """Params: as O1, plus `checks` ("all" by default; see `check`) and `accept_words` (none by default;
+    see `accept_word_check`)."""
 
     stage = "o2"
 
@@ -132,6 +153,8 @@ class VetoedAgent(EndToEndAgent):
             except LLMError as e:
                 return safe_fallback(obs, f"{type(e).__name__}: {e}")
             problems = check(decision, obs, self.params.get("checks", "all"))
+            if words := self.params.get("accept_words"):
+                problems += accept_word_check(decision, words)
             if not problems:
                 return self.to_move(decision, vetoes=vetoes) if vetoes else self.to_move(decision)
             vetoes += problems
@@ -144,5 +167,7 @@ class VetoedAgent(EndToEndAgent):
 def build_o2(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> VetoedAgent:
     if spec.params.get("checks", "all") not in CHECKS:
         raise ValueError(f"unknown checks {spec.params['checks']!r}; known: {CHECKS}")
+    if spec.params.get("accept_words") not in (None, *ACCEPT_WORDS):
+        raise ValueError(f"unknown accept_words {spec.params['accept_words']!r}; known: {ACCEPT_WORDS}")
     return VetoedAgent(spec, view, ctx)
 

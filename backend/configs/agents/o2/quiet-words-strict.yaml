@@ -1,0 +1,4 @@
+# o2/v2-limit-quiet, and no agreement words at all ("deal", "agree", "accept"...) in a message that
+# doesn't accept, negated or not (experiment 004).
+extends: o2/v2-limit-quiet
+params: {accept_words: strict}

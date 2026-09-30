@@ -32,4 +32,21 @@ the challenger's match is identical to the reference's until the veto first fire
 
 ## Results
 
-(pending)
+### Full bench (run_01a0f1eca7c68f97180c, 240 pairs)
+
+| Challenger | vs reference | p | Deals within own limit | Past own limit |
+|---|---|---|---|---|
+| o2/quiet-words | −0.020 [−0.070, +0.031] | 0.45 | 70% vs 70% | 1 |
+| o2/quiet-words-strict | −0.044 | 0.09 | 68% vs 70% | 0 |
+
+Neither gains; strict costs share (its veto fired in 156 of 240 matches) and fails the deal check.
+
+**Not a clean measurement.** Coupling didn't work: only 3 of 240 pairs stayed identical, and 167 diverged at the
+first message, because a pair's matches start together, both missed the cache and sampled apart. Fixed since
+(`CachedClient` makes an identical request in flight wait for the first answer). The reader veto fired in only 11
+matches, so a rerun with working coupling should measure it almost without noise.
+
+**The one past-limit deal was a referee misread plus a veto gap.** The hardliner wrote "Take it or leave it: $132"
+(restating our $132); rules v1 read it as nothing, and our "Deal." closed at its older $112, below our $127.80 limit.
+The veto checked the price our decision named ($132), not the offer as read. Both are fixed: the veto checks both
+(`o2.py`), and the `rules-v2` reader (bench `standard-v2`) never closes at a stale price.

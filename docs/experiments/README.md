@@ -81,3 +81,4 @@ each round are also logged to `data/climb/log.jsonl`, which the next round's pro
 
 | # | Question | Status | Result |
 |---|---|---|---|
+| [000](000-baseline.md) | How good is the baseline? | done | Dev: +0.117 over plain O1 (p<0.0001), 0 deals past the limit. Holdout: +0.033 (ns) and 9 points fewer deals; behind the thinking exploiter, weaker with 5 rounds. League: 3rd of 5, behind boulware and tough-qwen |

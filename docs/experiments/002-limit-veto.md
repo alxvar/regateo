@@ -24,4 +24,42 @@ All four use the strategy prompt negotiator_system.v2. The veto (`checks` param 
 
 ## Results
 
-(pending)
+### Full bench (run_01a0f16d1940f5f62934, 240 pairs, code at acd4aae)
+
+No challenger was stopped early. o1-qwen and o1-v2 replayed from the cache: their numbers equal 001's.
+
+| Variant | Share | vs ref | p | Deal rate | Deals within own limit | Deals past own limit |
+|---|---|---|---|---|---|---|
+| **o2-v2-limit-quiet** | **0.385** | **+0.153** | <0.0001 | 73.8% | **73.8%** | **0** |
+| o1-v2 | 0.336 | +0.105 | 0.0001 | 78.3% | 73.8% | 11 |
+| o2-v2-limit | 0.311 | +0.079 | 0.015 | 75.8% | 72.5% | 8 |
+| o2-v2 | 0.268 | +0.036 | 0.20 | 58.3% | 57.5% | 2 |
+| o1-qwen (ref) | 0.232 | | | 77.5% | 70.8% | 16 |
+
+limit-quiet against o1-v2 directly (paired): +0.048 [-0.006, +0.103], p=0.084.
+
+### What it says
+
+- **Not writing prices past the limit is what matters.** The limit-only veto still let 8 deals past the limit
+  through: the agent quoted the other side's price to reject it ("$199 is far above…"), and the referee read that as
+  an offer. Forbidding those mentions removes every past-limit deal *and* raises the share (+0.153 vs +0.105 for v2).
+  Plausibly because quoting their number anchors the conversation on it.
+- **O2's original checks cost deals**, as suspected: 58% deal rate. The rules beyond the limit (no walking back, no
+  stray prices) are what hurt.
+- **The deal rate drop is the past-limit deals.** limit-quiet closes 73.8% against v2's 78.3%, but v2's 78.3% includes
+  11 deals past its own limit (4.6 points). Counting only deals within the agent's own limit, the two are equal, and
+  both beat the reference (70.8%).
+- **Readings.** `regateo readings` shows limit-quiet with the fewest messages whose reading differs from the agent's
+  intent (517, against 693-801 for the others), so its gain doesn't come from referee misreads.
+
+### Promotion checks for o2-v2-limit-quiet
+
+- Gain: pass (+0.153, p<0.0001). Limit: pass (0). Opponents: pass.
+- **Deals: fails as the rule is written** (73.8% vs 77.5%, more than 2 points down). It passes if the rule counts only
+  deals within the agent's own limit (73.8% vs 70.8%). Decision needed: see "Open".
+- Holdout: see below.
+
+### Open
+
+- Should the deal-rate check count only deals within the agent's own limit? A past-limit deal scores negative and is a
+  hard fail anyway, so counting it as a "deal" in the deal-rate check rewards the thing the limit check forbids.

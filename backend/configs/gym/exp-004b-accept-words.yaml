@@ -1,0 +1,8 @@
+# Experiment 004 rerun (docs/experiments/004-accept-words.md) on standard-v2 (rules-v2 reader), with
+# coupling working: the reference and both challengers share a pair's samples until their behaviour differs.
+name: exp-004b-accept-words
+bench: standard-v2
+reference: o2/v2-limit-quiet
+challengers: [o2/quiet-words, o2/quiet-words-strict]
+early_stop: true
+settings: {concurrency: 32, cache: readwrite}

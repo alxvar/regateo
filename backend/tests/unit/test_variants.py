@@ -4,6 +4,7 @@ import pytest
 from regateo.agents import AgentSpec
 from regateo.agents.baselines.o1 import Decision
 from regateo.core import ScenarioSpec, frozen, sample_scenarios
+from regateo.core.roles import Role
 from regateo.gym import GymSpec, build_gym_report, run_gym
 from regateo.llm import registry
 from regateo.llm.cache import CachedClient, CacheMode
@@ -64,6 +65,36 @@ def test_replay_key_is_what_the_match_is():
                                      "meta": {"pair": "7"}})
     assert renamed.replay_key() == job.replay_key()
     assert job.model_copy(update={"seed": 1}).replay_key() != job.replay_key()
+
+
+def test_coupled_replay_key_leaves_out_the_subject():
+    s = sample_scenarios(ScenarioSpec(per_cell=1), 1)[0]
+    job = MatchJob(key="x", scenario=s, seller=AgentSpec.resolve("boulware"), buyer=AgentSpec(kind="scripted:liar"),
+                   couple=Role.SELLER)
+    other_agent = job.model_copy(update={"seller": AgentSpec(kind="boulware", params={"boulware": 8})})
+    assert other_agent.replay_key() == job.replay_key()
+    assert job.model_copy(update={"buyer": AgentSpec(kind="scripted:hardliner")}).replay_key() != job.replay_key()
+    assert other_agent.model_copy(update={"couple": None}).replay_key() != job.replay_key()
+
+
+async def test_coupled_subjects_share_draws(tmp_path, monkeypatch):
+    """Reference and challenger differ in a setting that doesn't change their requests: coupled, the
+    challenger replays the reference's answers; uncoupled, each is sampled on its own."""
+    calls = {}
+    for coupled in (True, False):
+        fake = FakeProvider(lambda req: Decision(action="offer", price=150, message="$150"), profile_name="fake")
+        monkeypatch.setattr(registry, "_clients", {})
+        monkeypatch.setattr(registry, "build_provider", lambda profile, fake=fake: fake)
+        monkeypatch.setenv("REGATEO_DATA", str(tmp_path / str(coupled)))
+        spec = GymSpec.model_validate({
+            "name": "t", "mode": "benchmark", "coupled": coupled, "opponents": ["scripted:hardliner"],
+            "roles": ["seller"], "scenarios": {"per_cell": 2, "max_rounds": [4]}, "sim_clock": True, "seed": 1,
+            "b": {"kind": "o1", "model": "fake"}, "a": {"kind": "o1", "model": "fake", "params": {"unused": 1}},
+            "settings": {"cache": "readwrite"}})
+        await run_gym(spec, await Store.open(tmp_path / f"db-{coupled}"))
+        assert all(r.seed is not None for r in fake.requests)
+        calls[coupled] = len(fake.requests)
+    assert calls[False] == 2 * calls[True] > 0
 
 
 async def test_a_new_run_replays_the_same_matches(tmp_path, monkeypatch):
@@ -161,6 +192,24 @@ async def test_early_stop_in_a_gym(tmp_path, monkeypatch):
     pushover = next(c for c in r.challengers if c.side.label == "pushover")
     assert pushover.stopped_at == 8 and pushover.diff.n == 8
     assert pushover.checks[0].name == "gain" and pushover.checks[0].status == "fail"
+
+
+async def test_successive_halving(tmp_path, monkeypatch):
+    _bench(tmp_path, monkeypatch)
+    challengers = [SOFT, *[{"kind": "boulware", "name": f"b{k}", "params": {"boulware": k}} for k in (3, 5, 8)]]
+    spec = GymSpec.model_validate({"name": "h", "bench": "b1", "reference": "boulware", "challengers": challengers,
+                                   "halving": {"first": 8, "finalists": 2}})
+    store = await Store.open(tmp_path / "db")
+    run_id, _ = await run_gym(spec, store)
+    r = await build_gym_report(store, run_id)
+    total = 2 * 5 * 2 * 2                                   # cells x scenarios x opponents x roles
+    assert r.done == r.total == total + 2 * total + 2 * 8   # reference and finalists everywhere, the cut two 8 pairs
+    assert sorted(c.halved_at for c in r.challengers if c.halved_at) == [8, 8]
+    finalists = [c for c in r.challengers if c.halved_at is None]
+    assert len(finalists) == 2 and all(c.diff.n == total for c in finalists)
+    cut = next(c for c in r.challengers if c.halved_at)
+    assert cut.diff.n == 8 and cut.checks[0].status == "fail" and "halving" in cut.checks[0].detail
+    assert min(f.diff.mean_diff for f in finalists) is not None
 
 
 def test_promotion_checks():

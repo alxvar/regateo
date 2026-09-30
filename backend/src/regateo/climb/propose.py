@@ -191,11 +191,12 @@ def next_experiment() -> tuple[int, Path]:
 
 
 def write_experiment(written: list[Written], *, reference: str, bench: str, source_run: str) -> str:
-    """A screen gym config and an experiment stub for one round. Returns the gym config name."""
+    """A gym config (the full bench, with successive halving and early stopping) and an experiment stub
+    for one round. Returns the gym config name."""
     num, folder = next_experiment()
     name = f"exp-{num:03d}-climb"
-    gym = {"name": name, "bench": bench, "tier": "screen", "reference": reference,
-           "challengers": [w.agent for w in written], "early_stop": True,
+    gym = {"name": name, "bench": bench, "reference": reference,
+           "challengers": [w.agent for w in written], "halving": True, "early_stop": True,
            "settings": {"concurrency": 32, "cache": "readwrite"}}
     (configs_dir() / "gym" / f"{name}.yaml").write_text(
         f"# Climb round (docs/experiments/{num:03d}-climb.md), proposed from {source_run}.\n"
@@ -204,7 +205,7 @@ def write_experiment(written: list[Written], *, reference: str, bench: str, sour
                      for w in written)
     (folder / f"{num:03d}-climb.md").write_text(
         f"# {num:03d}: Climb round from {reference}\n\n"
-        f"**Bench:** {bench}, screen then full for the best. **Reference:** {reference}. "
+        f"**Bench:** {bench}, successive halving to the full bench. **Reference:** {reference}. "
         f"**Config:** `backend/configs/gym/{name}.yaml`.\n\n"
         f"Proposed by the climb loop (`regateo propose`, local Qwen) from the failures in {source_run}. "
         "Not yet reviewed by a person.\n\n"

@@ -9,7 +9,7 @@ from regateo.agents.base import AgentSpec
 from regateo.core.config import configs_dir, load_yaml_dict
 from regateo.core.ids import derive_seed
 from regateo.core.roles import Role
-from regateo.gym.early import EarlyStop
+from regateo.gym.early import EarlyStop, Halving
 from regateo.runner.runner import MatchJob
 from regateo.runner.specs import ExperimentSpec, cell_of, resolve_agent
 
@@ -47,7 +47,10 @@ class GymSpec(ExperimentSpec):
     tiers: dict[str, int] = Field(default_factory=dict)     # tier name -> scenarios per cell
     purpose: Literal["dev", "holdout"] = "dev"               # set by the bench; decides the promotion checks
     early_stop: EarlyStop | None = None                       # benchmark only: stop clear losers (gym.early)
+    halving: Halving | None = None                            # benchmark only: successive halving (gym.early)
     source_run: str | None = None                             # the run this one continues, e.g. a climb screen
+    coupled: bool = True                                      # benchmark only: subjects share a pair's random
+                                                              # draws (MatchJob.replay_key); False: independent
 
     @model_validator(mode="before")
     @classmethod
@@ -75,7 +78,7 @@ class GymSpec(ExperimentSpec):
             data["a"], data["extra"] = first, rest
         return data
 
-    @field_validator("early_stop", mode="before")
+    @field_validator("early_stop", "halving", mode="before")
     @classmethod
     def _early_stop(cls, v: Any) -> Any:
         return {} if v is True else None if v is False else v
@@ -138,7 +141,8 @@ class GymSpec(ExperimentSpec):
                     for subject, agent in subjects.items():
                         seller, buyer = (agent, opp) if role is Role.SELLER else (opp, agent)
                         jobs.append(MatchJob(key=f"{pair}-{subject}", scenario=s, seller=seller, buyer=buyer,
-                                             seed=seed, meta={"mode": "benchmark", "pair": pair, "subject": subject,
-                                                              "role": role.value, "opponent": opp.label,
-                                                              "cell": cell}, **common))
+                                             seed=seed, couple=role if self.coupled else None,
+                                             meta={"mode": "benchmark", "pair": pair, "subject": subject,
+                                                   "role": role.value, "opponent": opp.label, "cell": cell},
+                                             **common))
         return jobs

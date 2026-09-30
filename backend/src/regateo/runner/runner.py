@@ -24,6 +24,7 @@ from regateo.llm.client import LLMClient
 from regateo.llm.metering import Meter
 from regateo.llm.profiles import profile_fingerprint
 from regateo.llm.registry import get_client
+from regateo.llm.types import LLMRequest, LLMResponse
 from regateo.match.clock import RealClock, SimClock
 from regateo.match.engine import run_match
 from regateo.protocol.registry import get_protocol
@@ -44,16 +45,39 @@ class MatchJob(BaseModel):
     reader: str = "rules"                      # how messages are read (referee.registry.build_reader)
     seed: int = 0
     sim_clock: bool = False                    # simulated latency instead of wall-clock time
+    couple: Role | None = None                 # this side's agent is left out of the replay key (see replay_key)
     meta: dict[str, Any] = Field(default_factory=dict)
 
     def replay_key(self) -> str:
         """What the match is, independent of the run it's in: the same scenario, seed, rules and
-        agent behaviour (not their names) replay from the LLM cache in any later run."""
-        body = {"scenario": self.scenario.model_dump(mode="json"), "seed": self.seed,
-                "seller": self.seller.ref().config_hash, "buyer": self.buyer.ref().config_hash,
+        agent behaviour (not their names) replay from the LLM cache in any later run.
+
+        With `couple` set, the key leaves out that side's agent, so every agent that plays this pair
+        shares its random draws: an identical request replays the same answer, and a different one is
+        sampled with the same seed (`seeded`). Two agents' matches then stay identical until their
+        behaviour first differs, which takes the sampling noise out of a paired comparison."""
+        sides = {"seller": self.seller.ref().config_hash, "buyer": self.buyer.ref().config_hash}
+        if self.couple is not None:
+            sides[self.couple.value] = "coupled"
+        body = {"scenario": self.scenario.model_dump(mode="json"), "seed": self.seed, **sides,
                 "protocol": self.protocol, "detector": self.detector, "reader": self.reader,
                 "sim_clock": self.sim_clock}
         return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:16]
+
+
+class _Seeded:
+    """Gives each request a sampling seed from the match's replay key, the speaker, the stage and the
+    conversation length, unless it has one: the n-th call of the same kind in two coupled matches
+    draws the same random numbers, so similar prompts tend to sample the same words."""
+
+    def __init__(self, inner: LLMClient, replay: str, role: str, stage: str):
+        self.inner, self.profile_name, self.provider = inner, inner.profile_name, inner.provider
+        self._base = f"{replay}:{role}:{stage}"
+
+    async def complete(self, req: LLMRequest) -> LLMResponse:
+        if req.seed is None:
+            req = req.model_copy(update={"seed": derive_seed(0, self._base, len(req.messages)) % 2**31})
+        return await self.inner.complete(req)
 
 
 class RunSettings(BaseModel):
@@ -99,7 +123,8 @@ class _Clients:
 
     def for_match(self, mid: str, replay: str, role: str, agent: str) -> Callable[[str, str], LLMClient]:
         def factory(profile: str, stage: str) -> LLMClient:
-            return self.meter.wrap(self.base(profile), match=mid, replay=replay, role=role, agent=agent, stage=stage)
+            return _Seeded(self.meter.wrap(self.base(profile), match=mid, replay=replay, role=role, agent=agent,
+                                           stage=stage), replay, role, stage)
         return factory
 
 

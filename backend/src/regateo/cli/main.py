@@ -248,14 +248,14 @@ def mine(
 def propose(
     run_id: str,
     parent: Annotated[str, typer.Option(help="agent config the challengers extend, e.g. o2/v2-limit")],
-    reference: Annotated[str | None, typer.Option(help="reference for the screen gym (default: the parent)")] = None,
+    reference: Annotated[str | None, typer.Option(help="reference for the gym (default: the parent)")] = None,
     subject: str = "b",
-    n: Annotated[int, typer.Option(help="challengers to ask for")] = 3,
+    n: Annotated[int, typer.Option(help="challengers to ask for")] = 6,
     proposer: Annotated[str, typer.Option(help="model profile that proposes")] = "qwen-local-propose",
     bench: str = "standard-v1",
     db: DbOpt = None,
 ) -> None:
-    """Ask a local model for challengers from a run's failures; write their configs and a screen gym."""
+    """Ask a local model for challengers from a run's failures; write their configs and a gym."""
     from regateo.climb.mine import mine as mine_run
     from regateo.climb.propose import ask, write, write_experiment
 
@@ -279,24 +279,28 @@ def climb(
     reference: Annotated[str | None, typer.Option(help="reference to beat (default: the parent)")] = None,
     subject: str = "b",
     rounds: int = 1,
-    n: int = 3,
+    n: int = 6,
     proposer: str = "qwen-local-propose",
     bench: str = "standard-v1",
     db: DbOpt = None,
 ) -> None:
-    """Unattended rounds: mine, propose, screen, full bench for the best. Promotion stays manual."""
+    """Unattended rounds: mine, propose, successive halving on the full bench. Promotion stays manual."""
     from regateo.climb.loop import climb_round
 
     async def go() -> None:
         store = await Store.open(_db(db))
+        source = run_id
         for i in range(rounds):
-            typer.echo(f"Round {i + 1}/{rounds}")
-            r = await climb_round(store, from_run=run_id, parent=parent, reference=reference or parent,
+            typer.echo(f"Round {i + 1}/{rounds} (mining {source})")
+            r = await climb_round(store, from_run=source, parent=parent, reference=reference or parent,
                                   subject=subject, bench=bench, n=n, proposer=proposer, on_progress=_progress)
             sys.stderr.write("\n")
             typer.echo(fmt.proposals(r.written, r.rejected))
             for agent, res in r.results.items():
                 typer.echo(f"  {agent}: {res}")
+            # The next round mines this one: the reference played the whole bench there, next to fresh
+            # challengers to measure its regret against.
+            source = r.run or source
         await store.close()
 
     asyncio.run(go())

@@ -60,6 +60,8 @@ class OpenAIProvider:
         kwargs.update(p.extra)                # e.g. temperature, extra_body for vLLM options
         if req.temperature is not None:
             kwargs["temperature"] = req.temperature
+        if req.seed is not None:
+            kwargs["seed"] = req.seed
         return kwargs
 
     async def complete(self, req: LLMRequest) -> LLMResponse:

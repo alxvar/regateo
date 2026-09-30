@@ -137,6 +137,7 @@ function BenchmarkView({ r }: { r: GymReport }) {
   const rows: Breakdown[] = cs.map((c) => ({ key: c.side.label, a: c.side.mean_share, b: c.reference.mean_share, diff: c.diff }));
   const next = (c: ChallengerStats) => {
     if (c.stopped_at != null) return <span className="secondary">stopped early after {c.stopped_at} pairs</span>;
+    if (c.halved_at != null) return <span className="secondary">cut after {c.halved_at} pairs</span>;
     const f = r.follow_ups.find((f) => f.agents.includes(c.side.label));
     if (f) return <Link to={`/runs/${f.run_id}`} onClick={(e) => e.stopPropagation()}>full bench →</Link>;
     return <span className="muted">{r.tier ? "stopped at the screen" : "–"}</span>;

@@ -26,7 +26,8 @@ One file per question: `NNN-<question>.md`. Null results count: they stop us fro
    settings: {concurrency: 32, cache: readwrite}
    ```
    `regateo gym exp-002-...`. Commit first: the run records the commit, and warns when there are uncommitted changes.
-   Add `early_stop: true` to stop challengers that are clearly behind before they finish (only losers are stopped).
+   Add `early_stop: true` to stop challengers that are clearly behind before they finish (only losers are stopped),
+   and `halving: true` to cut the worse half of the challengers at 48, 96... pairs until two are left.
 4. **Write up** the hypothesis, run id and result here. A challenger that wins on the full bench is a *candidate*;
    it becomes the reference only after the promotion checklist below.
 
@@ -51,7 +52,7 @@ Steps 1–4 of a round can run unattended on local Qwen ([04 §5.2](../04-hill-c
 ```
 regateo mine <dev run>                                   # the failure bundle the proposer sees (reference by default)
 regateo propose <dev run> --parent <agent>               # one Qwen call: challenger configs + screen gym + stub doc
-regateo climb <dev run> --parent <agent> --rounds 5      # propose, screen, full bench for the best 2, repeat
+regateo climb <dev run> --parent <agent> --rounds 5      # propose, then successive halving on the full bench, repeat
 ```
 
 The proposer sees only the bundle and the log below: our agent's prompts and settings, dev transcripts, and results.

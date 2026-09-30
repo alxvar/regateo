@@ -23,6 +23,17 @@ class EarlyStop(BaseModel):
     z: float = 2.58            # stop when mean + z * standard error < 0 (strict, because we look several times)
 
 
+class Halving(BaseModel):
+    """Successive halving (docs/04-hill-climbing.md §6): every challenger plays the first `first` pairs; then
+    the better half by mean gain over the reference goes on to twice as many pairs, and so on, until
+    `finalists` are left, who play the rest of the bench. More candidates for the same matches, and the
+    matches go where the candidates are close. A cut only decides who plays on; promotion still needs the
+    full bench."""
+    first: int = 48            # pairs before the first cut: 2 scenarios per cell on standard-v1
+    keep: float = 0.5          # fraction kept at each cut, rounded up
+    finalists: int = 2         # stop cutting at this many
+
+
 class EarlyStopper:
     """Fed every finished match; tells the runner which jobs to skip. `stopped` maps a subject to
     the number of pairs it had played when it was stopped."""

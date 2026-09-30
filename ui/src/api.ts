@@ -85,6 +85,7 @@ export interface ChallengerStats {
   subject: string; side: SideStats; reference: SideStats; diff: Paired;
   by_opponent: Breakdown[]; by_role: Breakdown[]; by_cell: Breakdown[];
   stopped_at: number | null;   // early stopping dropped it after this many pairs
+  halved_at?: number | null;   // successive halving cut it after this many pairs
   checks: Check[];
 }
 export interface FollowUp { run_id: string; name: string; agents: string[] }

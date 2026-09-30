@@ -62,10 +62,10 @@ All opponents run on local Qwen or in code (§8).
 
 ### 5.1 One round
 
-1. **Mine failures.** From the reference's last full dev run, take the worst pairs: the lowest-share matches, round-limit no-deals, and cells where it lost to the opponent. Group them by cause, for example opened too soft, conceded to a fake deadline, lost track of the numbers, or accepted an injected instruction. The "Why" section of [001](experiments/001-o1-levers.md) is this step done by hand.
-2. **Propose 3–4 challengers.** Each changes one lever, is a small `extends:` config, and carries a hypothesis tied to one failure group.
-3. **Screen** (96 pairs), with early stopping (§6). Drop clear losers. The reference replays from the cache, so only challengers use the GPU.
-4. **Full dev bench** for the best one or two. Winning levers don't always add up, so when two win, also run one challenger that combines them.
+1. **Mine failures.** From the reference's last full dev run, take the pairs with the most *regret*: where another of our agents in the same run got the most more than the reference did, on the same scenario, opponent, role and seed. The better agent's transcript goes next to the top ones. Ranking by regret instead of by share skips matches nobody could win; deals past either side's limit don't count as doing better. Group them by cause, for example opened too soft, conceded to a fake deadline, lost track of the numbers, or accepted an injected instruction. The "Why" section of [001](experiments/001-o1-levers.md) is this step done by hand.
+2. **Propose 4–8 challengers.** Each changes one lever, is a small `extends:` config, and carries a hypothesis tied to one failure group.
+3. **Successive halving on the full dev bench** (§6), with early stopping. Every challenger plays the first 48 pairs; the better half by mean gain plays on to 96, and so on until two are left, who finish all 240. The reference replays from the cache, so only challengers use the GPU.
+4. **Combine.** Winning levers don't always add up, so when two win, also run one challenger that combines them.
 5. **Holdout, guardrails and reading audit** (§3.1) for the best candidate.
 6. **Promote.** `regateo freeze` its files, update "Current reference" in the experiments README, add it to the league roster, run the league, and write up `NNN-*.md`, null results included.
 
@@ -86,7 +86,7 @@ Steps 1–4 run without us. Step 5 and the promotion stay a human decision, beca
 A mid-size local model is unreliable at long, multi-step tool use, and an unattended loop will hit its failures. So the proposer is **a script with one LLM call, not a coding agent**:
 
 1. **`regateo mine RUN` (code, no LLM).** Picks the reference's worst pairs, groups them by opponent and end reason, and writes a bundle: the gym report, about 10 of the worst transcripts, and our agent's current prompt and config.
-2. **Propose (one Qwen call, structured output).** Input: the bundle. Output: 3–4 challengers, each with a hypothesis, an `extends:` config, and optionally a new prompt version.
+2. **Propose (one Qwen call, structured output).** Input: the bundle. Output: 4–8 challengers, each with a hypothesis, an `extends:` config, and optionally a new prompt version.
 3. **Validate (code).** The configs load; only our agent's params and prompts changed; the frozen-files test passes. A proposal that fails is dropped, not repaired.
 4. **Run** `regateo gym` on the proposals, and write the stub experiment doc.
 
@@ -127,7 +127,8 @@ This sets the strategy:
 - **Early on, gains are large,** and the screen plus the full bench are enough.
 - **When easy wins run out,** add `standard-v2` with about 20 scenarios per cell, instead of more challengers. The reference then has to be re-run once on the new bench.
 - **Early stopping, only to drop losers.** The gym checks each challenger every ~24 pairs and stops one that is clearly behind the reference. It never promotes early: checking repeatedly for a winner produces false winners.
-- **Successive halving** if screens get crowded: screen everything, give more pairs only to the top half, repeat.
+- **Successive halving** instead of a screen (`halving: true` in a gym config). A screen that passes anything with Δ > 0 at 96 pairs is close to a coin flip for gains of 0.01–0.05 (±0.08 noise); exp-003's accept-tolerance went from +0.013 on the screen to −0.027 on the full bench. Halving spends the same matches on more candidates and gives the most to the close ones: 8 challengers cost 8 × 48 + 4 × 48 + 2 × 144 = 864 matches, against 1,056 for a screen of 8 plus a full bench for 2.
+- **Coupled pairs** (on by default in benchmark gyms, `coupled: false` to turn off). The challenger and the reference share a pair's random draws: an identical request replays the same answer from the cache, and every call is sampled with a seed derived from the pair, the speaker and the turn. Their matches stay identical until their behaviour first differs, so a change that rarely fires, such as a veto, is measured almost without sampling noise. For prompt edits the gain is smaller: a different prompt samples different words even with the same seed. Turning it on changed every benchmark replay key once, so each reference plays its bench once more.
 - **Settings we can't observe yet.** [01 §4](01-problem-and-constraints.md) lists unknowns such as a hidden deadline, structured or free-text offers, or several issues. Keep bench cells split along the ones we can simulate (as `deadline_known` already is), so a gain in one setting can't hide a loss in another.
 - **Referee drift.** Changes to the referee's reader change scores for every agent. The reader is recorded in the bench (as now); a reader change means a new bench version.
 
@@ -140,9 +141,11 @@ This sets the strategy:
 | League | `backend/configs/arena/league.yaml`; `regateo arena league` |
 | Promotion checks in the gym report | "Promotion checks" section per challenger: gain (by bench purpose and tier), limit, deals, per-opponent warnings |
 | Early stopping | `early_stop: true` in a gym config (`gym/early.py`): checks each challenger from 48 pairs, then every 24; stops it when mean + 2.58 × standard error < 0 |
-| Failure mining | `regateo mine RUN` (`climb/mine.py`); refuses holdout runs |
+| Failure mining | `regateo mine RUN` (`climb/mine.py`): ranked by regret, with contrast transcripts; refuses holdout runs |
+| Successive halving | `halving: true` in a gym config (`gym/early.py`, `gym/run.py`); climb rounds use it |
+| Coupled pairs | `MatchJob.couple` and per-call seeds (`runner/runner.py`); `coupled` in a gym config, on by default |
 | Proposer | `regateo propose RUN --parent AGENT` (`climb/propose.py`), model profile `qwen-local-propose` |
-| Unattended rounds | `regateo climb RUN --parent AGENT --rounds N` (`climb/loop.py`) |
+| Unattended rounds | `regateo climb RUN --parent AGENT --rounds N` (`climb/loop.py`): propose, then one halving run |
 | Promotion checklist | [experiments/README.md](experiments/README.md) |
 
 ## 8. Decisions and open questions
@@ -151,7 +154,7 @@ This sets the strategy:
 - No API-based models for now, in matches, benches or the proposer. Everything runs on local Qwen or in code.
 - The holdout must show a gain in the same direction, not a significant one (§3.1).
 - A per-opponent drop is a warning for a human to read, not an automatic veto (§3.1).
-- Rounds stay lean: 3–4 challengers, screen with early stopping, full bench and holdout only for the best (§5.1).
+- Rounds stay lean: successive halving with early stopping on the full bench, holdout only for the best (§5.1, §6). *Changed 2026-09-30: the screen tier was too noisy to pick winners.*
 - The proposer is a script with one LLM call, not a coding agent (§5.2). *Revisited 2026-09-30: next, try Claude Code (Sonnet 5.5) in a sandbox, measuring what it uses of the subscription allowance.*
 - The deal-rate check counts only deals within the agent's own limit, and applies only to promotion runs (§3.1).
 - Guardrails in code, strategy in the model (§3.1).
@@ -162,10 +165,11 @@ This sets the strategy:
 ## 9. Where we are
 
 1. Done: 001 written up, the limit veto (002), `holdout-v1`, the league config, the promotion checks, early stopping,
-   `regateo mine`, the proposer and `regateo climb`.
-2. **Candidate: o2/v2-limit-quiet** ([002](experiments/002-limit-veto.md)): +0.153 on dev, +0.131 on the holdout, no
-   deals past its limit on dev. Its promotion waits on two decisions: whether the deal-rate check should count only deals
-   within the agent's own limit, and what to do about the two holdout deals the referee read as acceptances.
+   `regateo mine`, the proposer and `regateo climb`; after round 003, regret mining, successive halving and coupled pairs.
+2. **Reference: o2/v2-limit-quiet**, promoted 2026-09-30 from [002](experiments/002-limit-veto.md): +0.153 on dev,
+   +0.131 on the holdout. Its two holdout deals past the limit, both referee misreads of non-accepting messages, were
+   waived for this promotion.
 3. The loop ran one round unattended ([003](experiments/003-climb.md)): three proposals, all within noise of the
-   candidate. Nothing to promote; the loop itself works end to end in about 30 minutes.
-4. Next: decide on the candidate, promote it (freeze, league), then let `regateo climb` run overnight from it.
+   candidate. The loop works end to end in about 30 minutes; its screen and its proposals were too weak to find a gain.
+4. Next: the acceptance-word veto (004), an exploiter persona for `holdout-v2`, then a proposer that is a sandboxed
+   Claude Code session (Sonnet 5.5) with raw dev data, measured against the one-call proposer.

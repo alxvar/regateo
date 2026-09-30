@@ -1,8 +1,10 @@
 """Failure mining: the input for proposing challengers (docs/04-hill-climbing.md §5.2).
 
-A bundle is built from one dev gym run, for one subject: where it loses value, its worst transcripts,
-and its own prompts and settings. It holds nothing about the opponents beyond what they said in those
-matches: no persona prompts, no opponent code, and nothing from a holdout run.
+A bundle is built from one dev gym run, for one subject: where it loses value, the matches where it lost
+most against what another of our agents got in the same pair (its regret), and its own prompts and
+settings. Ranking by regret, not by share, skips matches nobody could win, such as a narrow zone against
+a hardliner, and shows next to each what the better agent did. It holds nothing about the opponents
+beyond what they said in those matches: no persona prompts, no opponent code, and nothing from a holdout run.
 """
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from regateo.core.roles import Role, other
 from regateo.storage.store import MatchRow, Store
 
 MAX_CHARS = 240          # per message in a transcript: keeps a bundle inside a local model's context
+CONTRAST = 2             # the top matches also get the better agent's transcript of the same pair
 
 
 class Bundle(BaseModel):
@@ -37,7 +40,10 @@ class Bundle(BaseModel):
                  f"- params: {spec.params}", ""]
         for ref, text in self.prompts.items():
             parts += [f"### Prompt template `{ref}`", "", "```", text.strip(), "```", ""]
-        parts += ["## Where it loses value", "", self.summary, "", "## Its worst matches", ""]
+        parts += ["## Where it loses value", "", self.summary, "",
+                  "## Its worst matches", "",
+                  "Ranked by regret: how much less it got than the best of our other agents in the same pair "
+                  "(same scenario, opponent, role and seed). Some also show what that agent did.", ""]
         for i, t in enumerate(self.transcripts, 1):
             parts += [f"### Match {i}", "", t, ""]
         return "\n".join(parts)
@@ -57,20 +63,24 @@ def _subject_spec(config: dict, subject: str) -> dict:
     return config["extra"][int(subject[1:]) - 2]
 
 
-def _summary(rows: list[tuple[MatchRow, Role]]) -> str:
+def _summary(rows: list[tuple[MatchRow, Role]], regret: dict[str, float]) -> str:
     cells: dict[tuple[str, str], list[float]] = defaultdict(list)
+    regrets: dict[str, list[float]] = defaultdict(list)
     for r, role in rows:
         assert r.outcome
         cells[(r.meta["opponent"], outcome_class(r.outcome, role))].append(r.outcome.share(role))
+        if r.meta["pair"] in regret:
+            regrets[r.meta["opponent"]].append(regret[r.meta["pair"]])
     by_opp: dict[str, list[float]] = defaultdict(list)
     for (opp, _), xs in cells.items():
         by_opp[opp] += xs
-    lines = ["| Opponent | Outcome | Matches | Mean share |", "|---|---|---|---|"]
+    lines = ["| Opponent | Outcome | Matches | Mean share | Mean regret |", "|---|---|---|---|---|"]
     for opp in sorted(by_opp, key=lambda o: fmean(by_opp[o])):
-        lines.append(f"| {opp} | all | {len(by_opp[opp])} | {fmean(by_opp[opp]):.3f} |")
+        reg = f"{fmean(regrets[opp]):.3f}" if regrets[opp] else "-"
+        lines.append(f"| {opp} | all | {len(by_opp[opp])} | {fmean(by_opp[opp]):.3f} | {reg} |")
         for (o, cls), xs in sorted(cells.items()):
             if o == opp:
-                lines.append(f"| | {cls} | {len(xs)} | {fmean(xs):.3f} |")
+                lines.append(f"| | {cls} | {len(xs)} | {fmean(xs):.3f} | |")
     return "\n".join(lines)
 
 
@@ -114,24 +124,64 @@ async def mine(store: Store, run_id: str, *, subject: str = "b", worst: int = 5)
     if run.config.get("purpose") == "holdout":
         raise ValueError("holdout runs are not mined: their transcripts stay unseen (docs/04-hill-climbing.md §4)")
     spec = _subject_spec(run.config, subject)
-    rows = [(r, Role(r.meta["role"])) for r in await store.list_matches(run_id)
-            if r.meta.get("subject") == subject and r.status == "done" and r.outcome]
+    by_pair: dict[str, dict[str, tuple[MatchRow, Role]]] = defaultdict(dict)
+    for r in await store.list_matches(run_id):
+        if r.status == "done" and r.outcome:
+            by_pair[r.meta["pair"]][r.meta["subject"]] = (r, Role(r.meta["role"]))
+    rows = [g[subject] for g in by_pair.values() if subject in g]
     if not rows:
         raise ValueError(f"no finished matches for subject {subject!r} in {run_id}")
 
-    # The worst matches, taken round robin across opponents so one opponent can't fill the bundle.
+    # Regret per pair: the best share another subject got there, minus ours. Without other subjects, or
+    # where nobody did better, a match falls back to its share, after every match with regret.
+    def share(x: tuple[MatchRow, Role]) -> float:
+        return x[0].outcome.share(x[1])  # type: ignore[union-attr]
+
+    # A deal past either side's limit doesn't count as doing better: it is a misread or a loss, not a lesson.
+    best: dict[str, tuple[str, float]] = {}
+    for pair, g in by_pair.items():
+        others = [(s, share(x)) for s, x in g.items()
+                  if s != subject and x[0].outcome.past_reservation is None]  # type: ignore[union-attr]
+        if subject in g and others:
+            best[pair] = max(others, key=lambda o: o[1])
+    regret = {pair: sh - share(by_pair[pair][subject]) for pair, (_, sh) in best.items()}
+
+    def rank(x: tuple[MatchRow, Role]) -> tuple[bool, float]:
+        reg = regret.get(x[0].meta["pair"], 0.0)
+        return (reg <= 0, -reg if reg > 0 else share(x))
+
+    # Taken round robin across opponents so one opponent can't fill the bundle.
     by_opp: dict[str, list[tuple[MatchRow, Role]]] = defaultdict(list)
-    for r, role in sorted(rows, key=lambda x: x[0].outcome.share(x[1])):  # type: ignore[union-attr]
+    for r, role in sorted(rows, key=rank):
         by_opp[r.meta["opponent"]].append((r, role))
     picked: list[tuple[MatchRow, Role]] = []
-    queues = sorted(by_opp.values(), key=lambda q: q[0][0].outcome.share(q[0][1]))  # type: ignore[union-attr]
+    queues = sorted(by_opp.values(), key=lambda q: rank(q[0]))
     while len(picked) < worst and any(queues):
         for q in queues:
             if q and len(picked) < worst:
                 picked.append(q.pop(0))
-    transcripts = [transcript(r, role, await store.match_messages(r.id)) for r, role in picked]
+
+    labels = _labels(run.config)
+    transcripts = []
+    for n, (r, role) in enumerate(picked):
+        text = transcript(r, role, await store.match_messages(r.id))
+        pair = r.meta["pair"]
+        if regret.get(pair, 0.0) > 0:
+            other_subject, other_share = best[pair]
+            text = (f"Regret {regret[pair]:.2f}: {labels.get(other_subject, other_subject)} got {other_share:.2f} "
+                    f"in the same pair.\n\n{text}")
+            if n < CONTRAST:
+                orow, orole = by_pair[pair][other_subject]
+                text += (f"\n\n#### What {labels.get(other_subject, other_subject)} did in the same pair\n\n"
+                         + transcript(orow, orole, await store.match_messages(orow.id)))
+        transcripts.append(text)
 
     agent = AgentSpec.model_validate(spec)
     own = {ref: prompts.path(ref).read_text() for ref in prompt_refs(agent) if not ref.startswith("persona_")}
-    return Bundle(run_id=run_id, subject=subject, agent=spec, prompts=own, summary=_summary(rows),
+    return Bundle(run_id=run_id, subject=subject, agent=spec, prompts=own, summary=_summary(rows, regret),
                   transcripts=transcripts)
+
+
+def _labels(config: dict) -> dict[str, str]:
+    specs = {"a": config["a"], "b": config["b"], **{f"a{n}": s for n, s in enumerate(config.get("extra", []), 2)}}
+    return {k: AgentSpec.model_validate(v).label for k, v in specs.items()}

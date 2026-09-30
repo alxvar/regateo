@@ -46,6 +46,7 @@ class ChallengerStats(BaseModel):
     by_role: list[Breakdown] = []
     by_cell: list[Breakdown] = []
     stopped_at: int | None = None    # early stopping dropped it after this many pairs
+    halved_at: int | None = None     # successive halving cut it after this many pairs
     checks: list[Check] = []
 
 
@@ -177,6 +178,9 @@ def promotion_checks(c: ChallengerStats, *, purpose: str, tier: str | None) -> l
         out.append(Check(name="gain", status="n/a", detail="no complete pairs"))
     elif c.stopped_at is not None:
         out.append(Check(name="gain", status="fail", detail=f"stopped early after {c.stopped_at} pairs: behind"))
+    elif c.halved_at is not None:
+        out.append(Check(name="gain", status="fail",
+                         detail=f"{d.mean_diff:+.3f}; cut by successive halving after {c.halved_at} pairs"))
     elif tier is not None:
         out.append(Check(name="gain", status="n/a", detail=f"{d.mean_diff:+.3f}; tier {tier} doesn't promote"))
     elif purpose == "holdout":
@@ -221,7 +225,7 @@ async def build_gym_report(store: Store, run_id: str) -> GymReport:
     labels = {"a": a_label, **{f"a{n}": spec.get("name") or _label(spec)
                                for n, spec in enumerate(run.config.get("extra", []), start=2)}}
     purpose, tier = run.config.get("purpose", "dev"), run.config.get("tier")
-    stopped = run.config.get("stopped", {})
+    stopped, halved = run.config.get("stopped", {}), run.config.get("halved") or {}
     challengers = []
     if mode == "benchmark":
         for subject, obs in sorted(challenger_pairs(rows).items(), key=lambda kv: _subject_order(kv[0])):
@@ -234,7 +238,8 @@ async def build_gym_report(store: Store, run_id: str) -> GymReport:
                 reference=_side(b_label, [r for _, r, _ in obs]),
                 diff=paired_test([c.share - r.share for c, r, _ in obs]),
                 by_opponent=_breakdown(per["opponent"]), by_role=_breakdown(per["role"]),
-                by_cell=_breakdown(per["cell"]), stopped_at=stopped.get(subject))
+                by_cell=_breakdown(per["cell"]), stopped_at=stopped.get(subject),
+                halved_at=halved.get(subject))
             stats.checks = promotion_checks(stats, purpose=purpose, tier=tier)
             challengers.append(stats)
 

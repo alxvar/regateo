@@ -21,6 +21,7 @@ class LLMRequest(BaseModel):
     output_schema: type[BaseModel] | None = None   # set: the response is parsed into this model
     effort: str | None = None                      # low | medium | high | xhigh | max (providers that support it)
     temperature: float | None = None               # overrides the profile's (OpenAI-API providers; Claude ignores it)
+    seed: int | None = None                        # sampling seed (OpenAI-API providers; Claude ignores it)
     tags: dict[str, str] = Field(default_factory=dict)   # attribution (match id, stage); not sent to the model
 
     @classmethod

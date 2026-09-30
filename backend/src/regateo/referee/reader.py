@@ -371,7 +371,9 @@ class LLMFirstReader(LLMReader):
             return r
         c = await self.confirmer._ask(history, rules)
         if c.source != "llm":                               # the confirming model failed: keep the first reading
-            return r.model_copy(update={"note": _join(r.note, "acceptance unconfirmed: confirming model failed")})
+            why = c.note.rsplit("reader model ", 1)[-1]
+            note = _join(r.note, f"acceptance unconfirmed: confirming model failed ({why})")
+            return r.model_copy(update={"note": note})
         if c.kind is ReadKind.ACCEPT and c.price is not None and r.price is not None and same_price(c.price, r.price):
             return r.model_copy(update={"note": _join(r.note, "acceptance confirmed")})
         return c.model_copy(update={"note": _join(c.note, f"overrules a first reading of accept {r.price}")})

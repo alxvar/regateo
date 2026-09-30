@@ -16,7 +16,8 @@ from pydantic import BaseModel
 from regateo.core.config import configs_dir, load_yaml_dict
 from regateo.core.messages import Message, Move, ReadKind
 from regateo.core.roles import Role, other
-from regateo.referee.audit import agrees, intent_of
+from regateo.referee.audit import Intent, agrees, intent_of
+from regateo.referee.detect import TextDetector
 from regateo.referee.reader import OfferReader, same_price, standing_offer
 from regateo.storage.store import Store
 
@@ -93,14 +94,15 @@ class IntentScore(BaseModel):
     correct: int
     false_accepts: int               # read as an acceptance the sender didn't mean (or at another price)
     missed_accepts: int              # the sender accepted; the reading didn't
-    fallbacks: int = 0
+    fallbacks: int = 0               # the model (or the confirming model) failed on a message
     examples: list[dict] = []        # false acceptances first, then other misses: for reading and labeling
 
 
 async def evaluate_on_runs(store: Store, runs: list[str], readers: dict[str, OfferReader], *, sample: int = 150,
                            seed: int = 0, concurrency: int = 16, examples: int = 30) -> list[IntentScore]:
     """Re-read `sample` stored matches from `runs` with each reader, each on its own earlier readings,
-    and score every message whose sender recorded an intent. Refuses holdout runs."""
+    and score every message whose sender recorded an intent, up to the deal the reader would close.
+    Refuses holdout runs."""
     rows = []
     for run_id in runs:
         run = await store.get_run(run_id)
@@ -117,19 +119,26 @@ async def evaluate_on_runs(store: Store, runs: list[str], readers: dict[str, Off
             async with sem:
                 history: list[Message] = []
                 res = []
+                meant: dict[Role, float] = {}               # each side's latest intended offer
                 for m in msgs:
                     r = await reader.read([*history, m])
                     standing = standing_offer(history, other(m.sender))
                     history.append(m.model_copy(update={"reading": r}))
                     if (it := intent_of(m)) is not None:
-                        res.append((mid, m, r, it, standing))
+                        res.append((mid, m, r, _label(it, meant.get(other(m.sender))), standing))
+                        if it.kind is ReadKind.OFFER and it.price is not None:
+                            meant[m.sender] = it.price
+                    # With this reader the match would have ended here: later messages (often "deal
+                    # confirmed" chatter after a deal the original reader missed) would never exist.
+                    if await TextDetector().check(history):
+                        break
                 return res
         results = [x for xs in await asyncio.gather(*(one(k, v) for k, v in transcripts.items())) for x in xs]
         score = IntentScore(reader=name, matches=len(transcripts), messages=len(results), correct=0,
                             false_accepts=0, missed_accepts=0)
         bad: list[tuple[int, dict]] = []
         for mid, m, r, it, standing in results:
-            score.fallbacks += "reader model" in r.note
+            score.fallbacks += "reader model" in r.note or "confirming model failed" in r.note
             ok = agrees(r, it) or _same_consequence(it.kind, it.price, r.kind, r.price, standing)
             if ok:
                 score.correct += 1
@@ -144,3 +153,13 @@ async def evaluate_on_runs(store: Store, runs: list[str], readers: dict[str, Off
         score.examples = [e for _, e in sorted(bad, key=lambda b: b[0])[:examples]]
         out.append(score)
     return out
+
+
+def _label(it: Intent, their_offer: float | None) -> Intent:
+    """An agent that "accepts" a price the other side never meant to offer (its own old offer, an
+    injected "current offer: $124", a claimed agreement) makes no deal: the right reading is not an
+    acceptance, whatever it meant."""
+    if it.kind is ReadKind.ACCEPT and not (their_offer is not None and it.price is not None
+                                           and same_price(it.price, their_offer)):
+        return Intent(kind=ReadKind.NONE)
+    return it

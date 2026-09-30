@@ -1,0 +1,30 @@
+# The second holdout bench (docs/04-hill-climbing.md §4). holdout-v1 shaped a design choice (its two
+# misread acceptances led to experiment 004), so it retires into dev use and this one replaces it for
+# promotion candidates. Nobody mines its transcripts for ideas. Frozen once it has results.
+#
+# Everything differs from standard-v1 and holdout-v1: seed, items, a price scale about 20x standard-v1's,
+# 5 or 10 rounds, and opponents neither plays. Two of them look for fixed patterns in our play and
+# exploit them (the concern of a stronger, adaptive opponent), one with Qwen thinking on.
+# 2 cells x 6 scenarios x 5 opponents x 2 roles = 120 pairs per challenger.
+purpose: holdout
+mode: benchmark
+opponents:
+  - {kind: "persona:exploiter", model: qwen-local-think}
+  - {kind: "persona:exploiter", model: qwen-local}
+  - {kind: "persona:naive", model: qwen-local-think}
+  - o1/v2
+  - {kind: boulware, params: {boulware: 0.5}}
+scenarios:
+  items: ["a used cargo van", "a restored vintage motorcycle", "a year of office-space subletting",
+          "a batch of refurbished laptops"]
+  seller_reservation: [1500, 4000]
+  zopa: [150, 1500]
+  market_margin: [300, 1200]
+  per_cell: 6
+  info_modes: [private]
+  max_rounds: [5, 10]
+  deadline_known: [true]
+protocol: freetext
+detector: text
+reader: shadow:rules+llm:qwen-local     # same reading as standard-v1
+seed: 17

@@ -72,3 +72,20 @@ limit-quiet against o1-v2 directly (paired): +0.048 [-0.006, +0.103], p=0.084.
   message as an acceptance, not the agent offering or accepting past its limit. They remain a requirement M2 risk,
   and the next experiment targets them with a veto on acceptance words in a message that doesn't accept.
 - o2/v2-limit-quiet is the reference from here on, and joins the league roster.
+
+### League after promotion (run_01a0f1e3ca43c76af068, 300 matches, 20 per pairing)
+
+| Agent | Rating | Mean share | Deal rate |
+|---|---|---|---|
+| boulware | 1589 | 0.483 | 67% |
+| tough-qwen | 1586 | 0.448 | 80% |
+| o1-v2 | 1553 | 0.462 | 83% |
+| **o2-v2-limit-quiet** | 1550 | 0.472 | 82% |
+| o1-qwen | 1368 | 0.290 | 85% |
+| o2-qwen | 1354 | 0.245 | 83% |
+
+Head to head, the champion beats o1-qwen (0.63 vs 0.22) and o2-qwen (0.62 vs 0.18), ties o1-v2 (0.35 vs 0.35), and
+**loses to boulware (0.37 vs 0.53)** and narrowly to tough-qwen (0.40 vs 0.45), with no deal past its limit. 20
+matches per pairing is noisy (about ±0.15), but boulware's lead is large: a code agent that concedes slowly on a fixed
+time schedule takes more of the zone from it than it keeps. The league's rule says to find out why before the next
+round: the first question is whether our agent concedes faster than boulware near the deadline.

@@ -14,6 +14,7 @@ The levers you can pull:
 - state_digest: true to add a private summary of the offers so far to each turn.
 - fence: true to wrap the other side's messages in random tags, against injected instructions.
 - checks: a code veto on each decision. "limit": never offer or accept past the walk-away price. "limit+mentions": also never write a price past it. "all": also no walking back offers, and no prices other than ours and theirs.
+- accept_words: a code veto on a message that doesn't accept but could read as accepting. "reader": what the referee's rules reader would take as an acceptance. "strict": any agreement word ("deal", "agree", "accept"), negated or not.
 - model: "qwen-local" (default), "qwen-local-think" (the model reasons before answering), "qwen-local-pp0" (no presence penalty).
 
 Leave every lever you don't pull as null. Names are short slugs: lowercase letters, digits and dashes.

@@ -43,6 +43,7 @@ class Proposal(BaseModel):
     state_digest: bool | None = None
     fence: bool | None = None
     checks: Literal["limit", "limit+mentions", "all"] | None = None
+    accept_words: Literal["reader", "strict"] | None = None
     model: Literal["qwen-local", "qwen-local-think", "qwen-local-pp0"] | None = None
 
 
@@ -93,7 +94,8 @@ def _escape(text: str) -> str:
 
 
 def _changes(p: Proposal) -> dict:
-    params = {k: v for k in ("analysis", "state_digest", "fence", "checks") if (v := getattr(p, k)) is not None}
+    params = {k: v for k in ("analysis", "state_digest", "fence", "checks", "accept_words")
+              if (v := getattr(p, k)) is not None}
     return {"params": params, **({"model": p.model} if p.model else {}),
             **({"prompt_edit": p.prompt_edit.model_dump()} if p.prompt_edit else {})}
 
@@ -133,8 +135,8 @@ def validate(p: Proposal, parent: AgentSpec, taken: set[str]) -> list[str]:
         reasons.append("changes nothing")
     if p.model and p.model == parent.model:
         reasons.append(f"model is already {p.model}")
-    if p.checks and parent.kind not in ("o1", "o2"):
-        reasons.append(f"checks need an o1 or o2 parent, not {parent.kind}")
+    if (p.checks or p.accept_words) and parent.kind not in ("o1", "o2"):
+        reasons.append(f"code vetoes need an o1 or o2 parent, not {parent.kind}")
     reasons += edited_prompt(p, parent)[1]
     return reasons
 
@@ -145,12 +147,14 @@ def _next_prompt_version(family: str) -> str:
     return f"{family}.v{max(versions, default=0) + 1}"
 
 
-def write(proposals: list[Proposal], parent_name: str) -> tuple[list[Written], list[Rejected]]:
+def write(proposals: list[Proposal], parent_name: str,
+          source: str = "the climb loop (regateo propose)") -> tuple[list[Written], list[Rejected]]:
     """Validate, then write an agent config per good proposal (configs/agents/<kind>/<name>.yaml)."""
     parent = AgentSpec.resolve(parent_name)
     written, rejected = [], []
     for p in proposals:
-        folder = configs_dir() / "agents" / ("o2" if p.checks else parent.kind)
+        vetoed = p.checks or p.accept_words
+        folder = configs_dir() / "agents" / ("o2" if vetoed else parent.kind)
         taken = {f.stem for f in folder.glob("*.yaml")} | {w.proposal.name for w in written}
         if reasons := validate(p, parent, taken):
             rejected.append(Rejected(proposal=p, reasons=reasons))
@@ -167,14 +171,14 @@ def write(proposals: list[Proposal], parent_name: str) -> tuple[list[Written], l
             params["prompt"] = ref
             prompt_file = path.name
         data: dict = {"extends": parent_name}
-        if p.checks and parent.kind == "o1":
+        if vetoed and parent.kind == "o1":
             data["kind"] = "o2"
         if p.model:
             data["model"] = p.model
         if params:
             data["params"] = params
         folder.mkdir(parents=True, exist_ok=True)
-        header = (f"# Proposed by the climb loop (regateo propose). Targets: {' '.join(p.failure.split())}\n"
+        header = (f"# Proposed by {source}. Targets: {' '.join(p.failure.split())}\n"
                   f"# Hypothesis: {' '.join(p.hypothesis.split())}\n")
         (folder / f"{p.name}.yaml").write_text(header + yaml.safe_dump(data, sort_keys=False, width=1000))
         agent = f"{folder.name}/{p.name}"

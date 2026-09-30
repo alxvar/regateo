@@ -1,6 +1,6 @@
 # 04: Hill-climbing the agent
 
-Status: **proposed**. This covers how we make the agent stronger one measured step at a time, and when a challenger replaces the reference. The per-experiment mechanics (variant configs, freezing, the gym command) are in [experiments/README.md](experiments/README.md). This doc adds what they don't cover yet: a promotion rule, a holdout, an opponent pool that grows, and a loop that can run unattended.
+Status: **in use**. This covers how we make the agent stronger one measured step at a time, and when a challenger replaces the reference. The per-experiment mechanics (variant configs, freezing, the gym command) are in [experiments/README.md](experiments/README.md). This doc adds what they don't cover yet: a promotion rule, a holdout, an opponent pool that grows, and a loop that can run unattended.
 
 ## 1. Goal and what's missing
 
@@ -131,19 +131,19 @@ This sets the strategy:
 - **Settings we can't observe yet.** [01 §4](01-problem-and-constraints.md) lists unknowns such as a hidden deadline, structured or free-text offers, or several issues. Keep bench cells split along the ones we can simulate (as `deadline_known` already is), so a gain in one setting can't hide a loss in another.
 - **Referee drift.** Changes to the referee's reader change scores for every agent. The reader is recorded in the bench (as now); a reader change means a new bench version.
 
-## 7. What to build
+## 7. What is built
 
-| Piece | Size | Notes |
-|---|---|---|
-| Walk-away veto for the climbing line | small–medium | Makes the past-reservation gate passable. Reuse O2's veto, as a param on O1 or by climbing O2, and find out why O2's deal rate dropped |
-| `backend/configs/benches/holdout-v1.yaml` | small | New seed and scenarios; new personas; boulware, o2-qwen, thinking-mode personas |
-| Held-out persona prompts | small | Written without looking at dev failures, ideally by someone other than whoever writes the challengers |
-| `backend/configs/arena/league.yaml` | small | Roster of champions, grows with each promotion |
-| Guardrail checks in the gym report | medium | Pass/fail per challenger next to Δshare (§3.1), and per-opponent warnings |
-| Early stopping in the gym | medium | Drops clear losers during the screen (§6) |
-| `regateo mine RUN` | medium | The failure bundle for step 1 (§5.2) |
-| Proposer script | medium | One structured Qwen call, then validation (§5.2) |
-| Promotion checklist | small | In [experiments/README.md](experiments/README.md), pointing here |
+| Piece | Where |
+|---|---|
+| Walk-away veto for the climbing line | O2's `checks` param: `limit` (never offer or accept past the limit) or `limit+mentions` (also never write a price past it); tested in [002](experiments/002-limit-veto.md) |
+| Holdout bench | `backend/configs/benches/holdout-v1.yaml`, `purpose: holdout`; new personas `anchor`, `splitter`, `stonewall` |
+| League | `backend/configs/arena/league.yaml`; `regateo arena league` |
+| Promotion checks in the gym report | "Promotion checks" section per challenger: gain (by bench purpose and tier), limit, deals, per-opponent warnings |
+| Early stopping | `early_stop: true` in a gym config (`gym/early.py`): checks each challenger from 48 pairs, then every 24; stops it when mean + 2.58 × standard error < 0 |
+| Failure mining | `regateo mine RUN` (`climb/mine.py`); refuses holdout runs |
+| Proposer | `regateo propose RUN --parent AGENT` (`climb/propose.py`), model profile `qwen-local-propose` |
+| Unattended rounds | `regateo climb RUN --parent AGENT --rounds N` (`climb/loop.py`) |
+| Promotion checklist | [experiments/README.md](experiments/README.md) |
 
 ## 8. Decisions and open questions
 

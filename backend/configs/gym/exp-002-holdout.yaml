@@ -1,0 +1,6 @@
+# Experiment 002's best candidate on the holdout bench (promotion checklist step 2).
+name: exp-002-holdout
+bench: holdout-v1
+reference: o1-qwen
+challengers: [o2/v2-limit-quiet]
+settings: {concurrency: 32, cache: readwrite}

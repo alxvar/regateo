@@ -82,4 +82,4 @@ each round are also logged to `data/climb/log.jsonl`, which the next round's pro
 | # | Question | Status | Result |
 |---|---|---|---|
 | [000](000-baseline.md) | How good is the baseline? | done | Dev: +0.117 over plain O1 (p<0.0001), 0 deals past the limit. Holdout: +0.033 (ns) and 9 points fewer deals; behind the thinking exploiter, weaker with 5 rounds. League: 3rd of 5, behind boulware and tough-qwen |
-| [001](001-reciprocity.md) | Does the baseline concede more than its opponent, and does making reciprocity concrete help? | running | |
+| [001](001-reciprocity.md) | Does the baseline concede more than its opponent, and does making reciprocity concrete help? | null | Finalists +0.044 (p=0.09, reciprocity prompt + moves digest) and +0.033 (moves digest), gains only against scripted opponents. The model still outpaces the other side in over half its concessions |

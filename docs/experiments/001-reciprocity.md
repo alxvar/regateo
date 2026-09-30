@@ -1,6 +1,6 @@
 # 001: Does the baseline concede more than its opponent?
 
-**Status:** running. **Config:** `backend/configs/gym/exp-001-reciprocity.yaml` (standard-v1, successive halving).
+**Status:** done, null. **Run:** run_01a0f2c40f6dd9711968. **Config:** `backend/configs/gym/exp-001-reciprocity.yaml` (standard-v1, successive halving).
 
 ## Why
 
@@ -36,4 +36,45 @@ Risk: holding still against a hardliner costs deals. The deal check (within own 
 
 ## Result
 
-(pending)
+Successive halving cut b1/reciprocity after 48 pairs (−0.003); the other two played all 240 pairs.
+
+| Agent | Share | Deals | vs baseline | p | Deals within own limit |
+|---|---|---|---|---|---|
+| baseline | 0.341 | 68% | | | 68% |
+| b1/reciprocity-moves | 0.385 | 70% | +0.044 | 0.089 | 70% |
+| b1/moves | 0.373 | 78% | +0.033 | 0.18 | 78% |
+| b1/reciprocity | (cut at 48) | | −0.003 | 0.96 | |
+
+Neither finalist passes the gain check. No deals past the limit; the deal check passes for both.
+
+Paired Δshare by opponent (240 pairs, 40 per opponent):
+
+| Opponent | b1/moves | b1/reciprocity-moves |
+|---|---|---|
+| scripted:hardliner | +0.072 | +0.119 |
+| scripted:injector | +0.111 | +0.182 |
+| scripted:liar | −0.026 | +0.092 |
+| persona:tough | +0.023 | −0.035 |
+| persona:manipulator | −0.022 | −0.047 |
+| persona:injector | +0.037 | −0.048 |
+
+Did the behaviour change? Share of our concessions bigger than the other side's last one:
+
+| Opponent | baseline | b1/moves | b1/reciprocity-moves |
+|---|---|---|---|
+| scripted:hardliner | 77% | 74% | 65% |
+| persona:tough | 68% | 61% | 57% |
+| persona:manipulator | 66% | 66% | 59% |
+| scripted:liar | 46% | 40% | 32% |
+
+## What it says
+
+- **The hypothesis is not supported.** With the rule spelled out and the moves computed for it, the model still
+  outpaces the other side in more than half of its concessions. Qwen doesn't follow the rule, even when it has the
+  numbers.
+- **The gains come from the scripted opponents, not the firm LLM personas** this was aimed at. Against the tough and
+  manipulator personas both variants are level or slightly behind. The scripted opponents have fixed schedules, so
+  gains there may not carry over to adaptive opponents.
+- **The moves digest raises the deal rate** (78% vs 68%) without deals past the limit, unlike the full digest before
+  the reset. Leaving out the walk-away comparison seems to be what removed the harm, but the gain is not significant.
+- Not promoted. Both finalists are worth keeping as a direction (information about moves), not as a rule.

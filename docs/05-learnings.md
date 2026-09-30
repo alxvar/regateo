@@ -28,11 +28,15 @@ On the strategy prompt's predecessor, or on the baseline's parent. Each is a lev
 | Prompt: accept when within 5% of the walk-away price | −0.027 (not significant). It tells the agent to take deals worth almost nothing |
 | Prompt: never repeat an offer price | −0.036 on the screen. Contradicts holding firm |
 | `fence: true` (tag the other side's messages) | −0.021 on the screen |
+| Prompt v3: the reciprocity rule as a step before every offer (001) | −0.003 at 48 pairs; the model still outpaces the other side |
+| Prompt v3 + `state_digest: moves` (001) | +0.044, p=0.09: gains against scripted opponents only, slightly behind against the LLM personas |
+| `state_digest: moves` on the baseline (001) | +0.033, p=0.18, deal rate 68% → 78% with no deals past the limit |
 | Veto `accept_words: strict` (no agreement word at all unless accepting) | +0.001, range ±0.036: rewrites two thirds of matches for no measured gain; not shown to be harmless |
 
 ## Open findings
 
 - **Boulware beats us head to head.** In the league, the reference kept 0.37 of the zone against boulware's 0.53 (20 matches). Boulware concedes slowly on a fixed time schedule. First question: do we concede faster than it near the deadline?
+- **We concede faster than firm opponents** (001): in half to three quarters of our concessions we move more than the other side just did, against the prompt's own rule, and Qwen doesn't follow the rule even when spelled out with the numbers.
 - **Deal rate is tied to the limit.** Counted only within the agent's own limit, the vetoed agent closes as often as the unvetoed one; the deals it gives up are ones past its limit.
 
 ## Measuring

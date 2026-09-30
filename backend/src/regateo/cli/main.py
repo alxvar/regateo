@@ -357,19 +357,41 @@ def climb(
 @app.command("reader-eval")
 def reader_eval(
     readers: Annotated[list[str], typer.Argument(help="readers to score, e.g. rules-v2 llm-first:qwen-local")],
+    runs: Annotated[list[str] | None, typer.Option("--run", help="also score on these dev runs' matches, "
+                                                   "against what LLM agents meant")] = None,
+    sample: Annotated[int, typer.Option(help="matches to sample from --run")] = 150,
+    out: Annotated[Path | None, typer.Option(help="write the misread examples here (YAML)")] = None,
+    db: DbOpt = None,
 ) -> None:
-    """Score message readers on the labeled corpus (configs/referee/reading-corpus.yaml)."""
-    from regateo.referee.evaluate import evaluate
+    """Score message readers on the labeled corpus (configs/referee/reading-corpus.yaml), and optionally
+    on stored dev matches against each LLM agent's recorded intent."""
+    import yaml
+
+    from regateo.referee.evaluate import evaluate, evaluate_on_runs
     from regateo.referee.registry import build_reader
 
     async def go() -> None:
         for name in readers:
             s = await evaluate(build_reader(name, get_client), name)
-            typer.echo(f"{name}: {s.correct}/{s.cases} correct, {s.false_accepts} false acceptances, "
+            typer.echo(f"corpus  {name}: {s.correct}/{s.cases} correct, {s.false_accepts} false acceptances, "
                        f"{s.missed_accepts} missed acceptances, {s.fallbacks} model failures (rules read those)")
             for m in s.misses:
                 typer.echo(f"  - expected {m.case.kind.value} {m.case.price}, got {m.got_kind.value} {m.got_price}"
                            f"  ({m.case.source}) {m.case.messages[-1][:90]!r}")
+        if not runs:
+            return
+        store = await Store.open(_db(db), readonly=True)
+        scores = await evaluate_on_runs(store, runs, {n: build_reader(n, get_client) for n in readers},
+                                        sample=sample)
+        await store.close()
+        for s in scores:
+            typer.echo(f"intent  {s.reader}: {s.correct}/{s.messages} messages in {s.matches} matches agree, "
+                       f"{s.false_accepts} false acceptances, {s.missed_accepts} missed acceptances, "
+                       f"{s.fallbacks} model failures")
+        if out:
+            out.write_text(yaml.safe_dump([s.model_dump() for s in scores], sort_keys=False, allow_unicode=True,
+                                          width=110))
+            typer.echo(f"wrote {out}")
 
     asyncio.run(go())
 

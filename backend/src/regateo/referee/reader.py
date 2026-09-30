@@ -348,17 +348,33 @@ $155"): the quote is not the offer. When unsure between "accept" and anything el
 
 class LLMFirstReader(LLMReader):
     """The model reads every free-text message; rules only read structured moves, and stand in
-    (marked ambiguous) when the model fails. Reader `llm-first:<profile>`."""
+    (marked ambiguous) when the model fails. Reader `llm-first:<profile>`.
+
+    With `confirm` (reader `llm-first:<profile>/<confirm profile>`), every acceptance, the one reading
+    that closes a deal, is read again by the second model, typically the same model with thinking on:
+    a deal closes only if it also reads an acceptance at the same price; otherwise its reading stands."""
 
     name = "llm-first"
     system = _SYSTEM_V2
     max_tokens = None            # the profile's: a thinking model spends most of it before answering
 
+    def __init__(self, client: LLMClient, window: int = 6, confirm: LLMClient | None = None):
+        super().__init__(client, window)
+        self.confirmer = LLMFirstReader(confirm, window) if confirm is not None else None
+
     async def read(self, history: Sequence[Message]) -> Reading:
         rules = rule_reading(history[-1], history[:-1], version=2)
         if rules.source == "structured":
             return rules
-        return await self._ask(history, rules)
+        r = await self._ask(history, rules)
+        if self.confirmer is None or r.kind is not ReadKind.ACCEPT or r.source != "llm":
+            return r
+        c = await self.confirmer._ask(history, rules)
+        if c.source != "llm":                               # the confirming model failed: keep the first reading
+            return r.model_copy(update={"note": _join(r.note, "acceptance unconfirmed: confirming model failed")})
+        if c.kind is ReadKind.ACCEPT and c.price is not None and r.price is not None and same_price(c.price, r.price):
+            return r.model_copy(update={"note": _join(r.note, "acceptance confirmed")})
+        return c.model_copy(update={"note": _join(c.note, f"overrules a first reading of accept {r.price}")})
 
 
 def _verdict_model(choices: tuple[float, ...]) -> type[BaseModel]:

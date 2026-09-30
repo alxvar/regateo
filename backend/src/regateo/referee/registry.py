@@ -41,7 +41,8 @@ def build_reader(name: str, llm: JudgeFactory | None = None) -> OfferReader:
     if name.startswith("llm-first:"):
         if llm is None:
             raise ValueError("an llm reader needs an LLM factory")
-        return LLMFirstReader(llm(name.removeprefix("llm-first:")))
+        first, _, confirm = name.removeprefix("llm-first:").partition("/")
+        return LLMFirstReader(llm(first), confirm=llm(confirm) if confirm else None)
     if name.startswith("llm:"):
         if llm is None:
             raise ValueError("an llm reader needs an LLM factory")

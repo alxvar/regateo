@@ -201,3 +201,20 @@ async def test_reader_eval_scores_the_corpus():
     v1, v2 = await evaluate(RuleReader(), "rules"), await evaluate(RuleReader(version=2), "rules-v2")
     assert v1.cases == v2.cases == len(cases)
     assert v2.correct > v1.correct                          # the exp-004 case
+
+
+async def test_confirming_reader_overrules_an_acceptance():
+    from regateo.referee.reader import LLMFirstReader
+    h = read_all("$150", "$170")
+    fast = FakeProvider([verdict([170], "accept", 170)])
+    think = FakeProvider([verdict([170], "none", None)])
+    r = await LLMFirstReader(fast, confirm=think).read([*h, msg(2, B, "We're agreed on the rest, not $170.")])
+    assert r.kind is ReadKind.NONE and "overrules" in r.note and len(think.requests) == 1
+    fast = FakeProvider([verdict([170], "accept", 170)])
+    think = FakeProvider([verdict([170], "accept", 170)])
+    r = await LLMFirstReader(fast, confirm=think).read([*h, msg(2, B, "Deal, $170.")])
+    assert (r.kind, r.price) == (ReadKind.ACCEPT, 170) and "confirmed" in r.note
+    offer = FakeProvider([verdict([160], "offer", 160)])
+    think = FakeProvider([])
+    await LLMFirstReader(offer, confirm=think).read([*h, msg(2, B, "$160?")])
+    assert think.requests == []                             # only acceptances are re-read

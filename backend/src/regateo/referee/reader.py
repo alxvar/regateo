@@ -269,6 +269,7 @@ class LLMReader(OfferReader):
         self.window = window
 
     system = _SYSTEM
+    max_tokens: int | None = 256
 
     async def read(self, history: Sequence[Message]) -> Reading:
         rules = rule_reading(history[-1], history[:-1])
@@ -299,7 +300,7 @@ class LLMReader(OfferReader):
         )
         try:
             resp = await self.client.complete(LLMRequest.of(
-                prompt, system=self.system, output_schema=_verdict_model(tuple(choices)), max_tokens=256,
+                prompt, system=self.system, output_schema=_verdict_model(tuple(choices)), max_tokens=self.max_tokens,
                 temperature=0.0, tags={"stage": "reader"},
             ))
         except LLMError as e:
@@ -351,6 +352,7 @@ class LLMFirstReader(LLMReader):
 
     name = "llm-first"
     system = _SYSTEM_V2
+    max_tokens = None            # the profile's: a thinking model spends most of it before answering
 
     async def read(self, history: Sequence[Message]) -> Reading:
         rules = rule_reading(history[-1], history[:-1], version=2)

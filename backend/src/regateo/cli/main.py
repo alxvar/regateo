@@ -366,7 +366,7 @@ def reader_eval(
         for name in readers:
             s = await evaluate(build_reader(name, get_client), name)
             typer.echo(f"{name}: {s.correct}/{s.cases} correct, {s.false_accepts} false acceptances, "
-                       f"{s.missed_accepts} missed acceptances")
+                       f"{s.missed_accepts} missed acceptances, {s.fallbacks} model failures (rules read those)")
             for m in s.misses:
                 typer.echo(f"  - expected {m.case.kind.value} {m.case.price}, got {m.got_kind.value} {m.got_price}"
                            f"  ({m.case.source}) {m.case.messages[-1][:90]!r}")

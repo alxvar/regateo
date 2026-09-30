@@ -36,6 +36,7 @@ class ReaderScore(BaseModel):
     correct: int
     false_accepts: int               # a wrong reading that closes a deal: nobody made it, or not at that price
     missed_accepts: int              # a real acceptance read as something else
+    fallbacks: int = 0               # messages the model failed to read, so the rules did
     misses: list[Miss]
 
 
@@ -46,13 +47,15 @@ def load_corpus() -> list[Case]:
 async def evaluate(reader: OfferReader, name: str, cases: list[Case] | None = None) -> ReaderScore:
     cases = cases if cases is not None else load_corpus()
     misses = []
-    false_acc = missed_acc = 0
+    false_acc = missed_acc = fallbacks = 0
     for c in cases:
         history: list[Message] = []
         for i, text in enumerate(c.messages):
             sender = Role.BUYER if i % 2 == 0 else Role.SELLER
             m = Message(idx=i, sender=sender, text=text, move=Move(text=text))
-            history.append(m.model_copy(update={"reading": await reader.read([*history, m])}))
+            reading = await reader.read([*history, m])
+            fallbacks += "reader model" in reading.note
+            history.append(m.model_copy(update={"reading": reading}))
         r = history[-1].reading
         assert r is not None
         standing = standing_offer(history[:-1], other(history[-1].sender))
@@ -61,7 +64,7 @@ async def evaluate(reader: OfferReader, name: str, cases: list[Case] | None = No
             false_acc += r.kind is ReadKind.ACCEPT
             missed_acc += c.kind is ReadKind.ACCEPT and r.kind is not ReadKind.ACCEPT
     return ReaderScore(reader=name, cases=len(cases), correct=len(cases) - len(misses), false_accepts=false_acc,
-                       missed_accepts=missed_acc, misses=misses)
+                       missed_accepts=missed_acc, fallbacks=fallbacks, misses=misses)
 
 
 def _same_consequence(kind: ReadKind, price: float | None, got: ReadKind, got_price: float | None,

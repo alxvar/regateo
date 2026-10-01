@@ -404,6 +404,20 @@ def freeze(paths: Annotated[list[Path], typer.Argument(help="files to freeze, e.
 
 
 @app.command()
+def learnings(
+    public: Annotated[bool, typer.Option(help="only what agent builders may see (docs/05, visibility)")] = False,
+    arch: Annotated[str | None, typer.Option(help="everything a proposer for this architecture is given")] = None,
+) -> None:
+    """Print docs/05-learnings.md: whole, its public view, or what a session on one architecture is given."""
+    from regateo.climb.learnings import learnings_path, public_view, tried
+    if arch:
+        typer.echo(tried(arch))
+    else:
+        text = learnings_path().read_text()
+        typer.echo(public_view(text) if public else text)
+
+
+@app.command()
 def serve(host: str = "127.0.0.1", port: int = 8000, db: DbOpt = None) -> None:
     """Serve the read-only API (and the built UI, if ui/dist exists)."""
     import uvicorn

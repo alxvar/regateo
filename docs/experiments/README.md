@@ -32,7 +32,12 @@ What we believe across all experiments, and why the baseline is built as it is: 
    it becomes the reference only after the promotion checklist below.
 5. **Update the learnings.** End the write-up with a `## Learnings` section naming each entry of
    [05-learnings.md](../05-learnings.md) it adds, strengthens, weakens or refutes, then make those changes there.
-   Null results too: an entry whose scope widened without the effect is a learning.
+   Null results too: an entry whose scope widened without the effect is a learning. Give a new entry its
+   visibility: public only if it follows from results and says nothing about how an agent, opponent or the
+   referee works inside.
+6. **Journal it** in the architecture's `agents/<architecture>/JOURNAL.md`: one entry per version or config
+   tried, with the run and the result. That journal is what the next session on that architecture reads; this
+   folder is for people.
 
 ## Promotion checklist
 

@@ -178,3 +178,24 @@ def test_repeats_are_rejected(configs):
     assert "this batch" in reasons["digest-2"]
     assert not (configs / "agents" / "single_call" / "v1" / "configs" / "firm-again.yaml").exists()
     assert not (configs / "agents" / "single_call" / "v3").exists()     # the duplicate version is removed
+
+
+def test_learnings_public_view_and_tried(configs, monkeypatch):
+    from regateo.climb import learnings
+    doc = configs / "docs" / "05-learnings.md"
+    doc.write_text(
+        "# 05\n\nIntro.\n\n## Internal section\n\n<!-- visibility: internal -->\n\nThe baseline is X.\n\n"
+        "## Strategy\n\n**L1. Secret.**\n- Status: holds.\n- Visibility: internal.\n\n"
+        "**L2. Shared.**\n- Status: holds.\n- Visibility: public.\n")
+    monkeypatch.setattr(learnings, "REPO_DIR", configs)
+    view = learnings.public_view(doc.read_text())
+    assert "Intro." in view and "L2. Shared" in view
+    assert "Secret" not in view and "baseline is X" not in view
+    (configs / "agents" / "single_call" / "JOURNAL.md").write_text("# single_call: journal\n\nv1 tried.\n")
+    (configs / "data" / "climb").mkdir(parents=True)
+    (configs / "data" / "climb" / "log.jsonl").write_text(
+        '{"agent": "single_call/v1/a", "hypothesis": "h-mine", "changes": {}, "result": "r"}\n'
+        '{"agent": "pipeline/v1/b", "hypothesis": "h-other", "changes": {}, "result": "r"}\n')
+    text = learnings.tried("single_call")
+    assert "L2. Shared" in text and "v1 tried." in text and "h-mine" in text
+    assert "Secret" not in text and "h-other" not in text

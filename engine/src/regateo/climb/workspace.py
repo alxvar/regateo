@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 
 from regateo.agents import AgentSpec
 from regateo.cli import format as fmt
-from regateo.climb.propose import PromptEdit, Proposal, Rejected, Written, tried, write
+from regateo.climb.learnings import tried
+from regateo.climb.propose import PromptEdit, Proposal, Rejected, Written, write
 from regateo.climb.versions import agent_prompts, prompt_dir
 from regateo.core.roles import Role, other
 from regateo.gym import build_gym_report
@@ -87,7 +88,7 @@ def _write_run(folder: Path, report: str, matches: list[dict]) -> None:
 
 
 def _finish(out: Path, parent: str, runs: list[str]) -> None:
-    (out / "data" / "tried.md").write_text(tried())
+    (out / "data" / "tried.md").write_text(tried(AgentSpec.resolve(parent).kind.split("/")[0]))
     (out / "README.md").write_text(_task(parent, runs))
     (out / META).write_text(json.dumps({"parent": parent, "runs": runs}))
 
@@ -170,7 +171,8 @@ by a safe move. In the data,
 - `data/<run>/matches.jsonl`: one line per match one of our agents played: the scenario, both walk-away prices,
   the result, and every message with our decision, vetoes and how the referee read it. Several of our agents
   played the same pairs (same `pair`: same scenario, opponent, role and seed), so you can compare them directly.
-- `data/tried.md`: experiments and climb rounds already run, and their results. Don't repeat them unless you say
+- `data/tried.md`: what we have learned, this architecture's journal, and its latest climb rounds with their
+  results. Don't repeat them unless you say
   why a variation is worth it.
 
 You may write scripts to analyse the data. Don't look for anything outside this folder.

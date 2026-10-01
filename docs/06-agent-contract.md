@@ -86,15 +86,23 @@ Other keys (stage traces, beliefs) are free. Keep them small and JSON-serialisab
 
 ## 5. What a builder may look at
 
-- **Read freely:** `agent-sdk/`, `agents/single_call/` (the baseline's architecture), `core/`, `llm/` (for usage), `protocol/`, docs 01–05 (05 is the record of what we've learned), `docs/experiments/`, and transcripts of your own dev runs (`regateo report`, the UI, `regateo workspace`).
-- **Don't read:** `engine/src/regateo/opponents/`, `referee/`, `configs/benches/`, `configs/arena/`, or anything from a holdout run. They are the exam: designing against them makes dev scores meaningless. Agents can't import the engine at all: a test fails if any file under `agents/` does. What an agent needs from the engine's world is in `agent_sdk` (prices in text, the guards, the fake model for tests).
+A session building or changing an agent works on one architecture. What it sees comes in three tiers:
+
+| Tier | Contents | Who sees it |
+|---|---|---|
+| Public | `agent-sdk/`, this contract, the public view of the learnings (`regateo learnings --public`), and what the bench's rules are (rounds, deadline known or hidden, protocol), not who the opponents are | Every builder session |
+| Its architecture | `agents/<architecture>/`, including its `JOURNAL.md`, and reports and transcripts of matches its own agents played on the dev bench | That architecture's sessions only |
+| Engine | The engine (`engine/`: opponents, referee, benches, arena), other architectures, all of docs/05 and `docs/experiments/`, the run database and LLM cache, and anything from a holdout run | People only |
+
+- **Why:** the engine tier is the exam. Designing against the opponents, the referee or the benches makes dev scores meaningless, and seeing other architectures makes ours converge on one idea.
+- **Imports:** agents can't import the engine at all: a test fails if any file under `agents/` does. What an agent needs from the engine's world is in `agent_sdk` (prices in text, the guards, the fake model for tests).
+- **Learnings between architectures** pass only through people: a lesson from one architecture's journal reaches others as a public entry in docs/05, and only if it follows from results, not from having read code ([05, "How the record works"](05-learnings.md#how-the-record-works)).
 - **Don't run:** the holdout or the league. A person runs them on the finished candidate.
 
 ## 6. Done
 
-1. `uv run pytest` passes, including unit tests for the new agent on the `fake` model profile, so they need no GPU (see `tests/unit/test_agents.py`).
-2. `configs/gym/<name>.yaml` has `bench: standard-v1`, `reference: baseline`, `challengers: [<name>]`, and it has been run on the full tier. Its report's "Promotion checks" read `candidate`, or the write-up says honestly why not.
-3. A write-up in `docs/experiments/NNN-<name>.md` covers the design, the calls per turn, the run id and the result. Null results count.
-4. The write-up ends with a `## Learnings` section, and [05-learnings.md](05-learnings.md) is updated to match ([how](05-learnings.md#how-the-record-works)). Before designing, read 05 for what we believe, how sure we are, and what has been tried.
+1. `uv run pytest` passes from the repo root, including the version's own tests (`agents/<architecture>/v<N>/tests/`, on `agent_sdk.testing`, no GPU).
+2. A gym config with `bench: standard-v1`, `reference: single_call/v1/baseline` and the new configs as challengers has been run on the full tier. Its report's "Promotion checks" read `candidate`, or the journal says honestly why not.
+3. **The architecture's `JOURNAL.md` has a new entry:** the version and configs, the hypothesis, what changed, the calls per turn, the run id, the result, and what it says. Null results count. Before designing, read the journal and the public learnings for what was tried and how sure we are.
 
-A person then takes it through the holdout, readings and league steps of the [promotion checklist](experiments/README.md#promotion-checklist).
+A person then reviews the journal entry, promotes what holds beyond the architecture into docs/05, and takes the best candidate through the holdout, readings and league steps of the [promotion checklist](experiments/README.md#promotion-checklist).

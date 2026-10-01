@@ -23,9 +23,10 @@ from agent_sdk.prompts import PromptDir
 from pydantic import BaseModel, Field
 
 from regateo.agents import AgentSpec
+from regateo.climb.learnings import climb_log_path, tried
 from regateo.climb.mine import Bundle
 from regateo.climb.versions import agent_prompts, new_version, prompt_dir, remove_version
-from regateo.core.config import REPO_DIR, agents_dir, configs_dir, data_dir
+from regateo.core.config import REPO_DIR, agents_dir, configs_dir
 from regateo.llm.client import LLMClient
 from regateo.llm.types import ChatMessage, LLMRequest
 from regateo.storage.store import Store
@@ -34,7 +35,6 @@ PROMPTS = PromptDir(Path(__file__).parent / "prompts")
 PROPOSER_PROMPT = "proposer_system.v1"
 ARCHITECTURE = "single_call"          # whose levers Proposal has
 MODELS = ("qwen-local", "qwen-local-think", "qwen-local-pp0")
-TRIED_MAX = 15                        # latest climb results shown to the proposer: its context is small
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
 
 
@@ -72,33 +72,21 @@ class Written(BaseModel):
 
 
 def log_path() -> Path:
-    return data_dir() / "climb" / "log.jsonl"
-
-
-def tried() -> str:
-    """What was tried already: the learnings from before the baseline, the experiment log in the docs,
-    and every climb round's results."""
-    parts = []
-    learnings = REPO_DIR / "docs" / "05-learnings.md"
-    if learnings.exists():
-        parts.append(learnings.read_text().strip())
-    readme = REPO_DIR / "docs" / "experiments" / "README.md"
-    if readme.exists() and "## Log" in (text := readme.read_text()):
-        parts.append(text.split("## Log", 1)[1].strip())
-    if log_path().exists():
-        rows = [json.loads(line) for line in log_path().read_text().splitlines() if line.strip()]
-        parts += [f"- {r['agent']}: {r['hypothesis']} Changes: {r['changes']}. Result: {r.get('result', 'pending')}"
-                  for r in rows[-TRIED_MAX:]]
-    return "\n".join(parts) or "Nothing yet."
+    return climb_log_path()
 
 
 async def ask(llm: LLMClient, bundle: Bundle, *, n: int = 3) -> list[Proposal]:
     resp = await llm.complete(LLMRequest(
         system=PROMPTS.render(PROPOSER_PROMPT, n=n),
-        messages=[ChatMessage(role="user", content=f"{bundle.markdown()}\n\n# Already tried\n\n{tried()}")],
+        messages=[ChatMessage(role="user", content=f"{bundle.markdown()}\n\n# Already tried\n\n"
+                                                    f"{tried(_arch(bundle.agent['kind']))}")],
         output_schema=Proposals, tags={"stage": "proposer"}))
     assert isinstance(resp.parsed, Proposals)
     return resp.parsed.proposals
+
+
+def _arch(kind: str) -> str:
+    return kind.split("/")[0]
 
 
 def _escape(text: str) -> str:

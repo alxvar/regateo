@@ -113,3 +113,12 @@ def test_an_agent_that_fails_the_check_is_never_built(tmp_path, monkeypatch):
     monkeypatch.setenv("REGATEO_AGENTS", str(tmp_path))
     with pytest.raises(ValueError, match="submission check"):
         build_agent(AgentSpec(kind="sneaky/v1"), S.view_for(Role.SELLER), ctx(Role.SELLER))
+
+
+def test_agents_reach_models_only_through_complete():
+    """An engine client holds the LLM cache and the run's database; an agent gets a client with `complete` only."""
+    fake = FakeProvider([])
+    o1 = build_agent(AgentSpec(kind="single_call/v1", model="fake"), S.view_for(Role.SELLER), ctx(Role.SELLER, fake))
+    client = o1.llm
+    assert hasattr(client, "complete") and not hasattr(client, "requests") and not hasattr(client, "inner")
+    assert not hasattr(client, "__dict__")

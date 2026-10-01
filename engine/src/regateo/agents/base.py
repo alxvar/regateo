@@ -119,7 +119,27 @@ class TrustedContext(AgentContext):
     true_rules: Rules                      # the real rules, even when the deadline is hidden from agents
 
     def public(self) -> AgentContext:
-        return AgentContext(**{f.name: getattr(self, f.name) for f in fields(AgentContext)})
+        """The SDK's context, whose model clients expose `complete` and nothing else: the engine's clients
+        hold the LLM cache and the run's database, which an agent must not reach through their attributes."""
+        values = {f.name: getattr(self, f.name) for f in fields(AgentContext)}
+        if (factory := self.llm_factory) is not None:
+            values["llm_factory"] = lambda profile, stage: _sealed(factory(profile, stage))
+        return AgentContext(**values)
+
+
+class _SealedClient:
+    """Only `complete`. The engine client lives in the function's closure, which only dunder attributes
+    (refused by the submission check) reach."""
+    __slots__ = ("complete",)
+
+    def __init__(self, complete: Callable[..., Any]):
+        self.complete = complete
+
+
+def _sealed(client: Any) -> _SealedClient:
+    async def complete(req: Any) -> Any:
+        return await client.complete(req)
+    return _SealedClient(complete)
 
 
 Builder = Callable[[AgentSpec, PrivateView, AgentContext], Agent]

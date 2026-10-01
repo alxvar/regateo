@@ -1,6 +1,9 @@
 """The proposer: one structured call to a local model turns a failure bundle into challengers
-(docs/04-hill-climbing.md §5.2). Code then validates each proposal and writes it as an agent config
-(plus a new prompt version when it rewrites the prompt), a screen gym config and an experiment stub.
+(docs/04-hill-climbing.md §5.2). Code then validates each proposal and writes it as an agent config, a
+gym config and an experiment stub. A config that only changes settings goes into the parent's version;
+one that rewrites the prompt gets a new version of the agent, a copy of the parent's with the new prompt.
+
+The levers are those of the single_call architecture, so the parent must be a single_call version.
 
 The model only ever sees the bundle, the experiment log and its own instructions, so what it can
 learn about the opponents is limited to what they said in dev matches.
@@ -15,17 +18,21 @@ from string import Template
 from typing import Literal
 
 import yaml
+from agent_sdk import packages
+from agent_sdk.prompts import PromptDir
 from pydantic import BaseModel, Field
 
-from regateo.agents import AgentSpec, prompts
-from regateo.agents.base import prompt_refs
+from regateo.agents import AgentSpec
 from regateo.climb.mine import Bundle
-from regateo.core.config import REPO_DIR, configs_dir, data_dir
+from regateo.climb.versions import agent_prompts, new_version, prompt_dir, remove_version
+from regateo.core.config import REPO_DIR, agents_dir, configs_dir, data_dir
 from regateo.llm.client import LLMClient
 from regateo.llm.types import ChatMessage, LLMRequest
 from regateo.storage.store import Store
 
+PROMPTS = PromptDir(Path(__file__).parent / "prompts")
 PROPOSER_PROMPT = "proposer_system.v1"
+ARCHITECTURE = "single_call"          # whose levers Proposal has
 MODELS = ("qwen-local", "qwen-local-think", "qwen-local-pp0")
 TRIED_MAX = 15                        # latest climb results shown to the proposer: its context is small
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
@@ -87,7 +94,7 @@ def tried() -> str:
 
 async def ask(llm: LLMClient, bundle: Bundle, *, n: int = 3) -> list[Proposal]:
     resp = await llm.complete(LLMRequest(
-        system=prompts.render(PROPOSER_PROMPT, n=n),
+        system=PROMPTS.render(PROPOSER_PROMPT, n=n),
         messages=[ChatMessage(role="user", content=f"{bundle.markdown()}\n\n# Already tried\n\n{tried()}")],
         output_schema=Proposals, tags={"stage": "proposer"}))
     assert isinstance(resp.parsed, Proposals)
@@ -119,7 +126,7 @@ def edited_prompt(p: Proposal, parent: AgentSpec) -> tuple[str | None, list[str]
     """The parent's prompt template with the proposal's edit applied, or the reasons it can't be."""
     if not p.prompt_edit:
         return None, []
-    old = prompts.path(parent.params.get("prompt", "negotiator_system.v1")).read_text()
+    old = prompt_dir(parent).text(parent.params.get("prompt", "negotiator_system.v1"))
     edit = p.prompt_edit
     if not edit.replace.strip():
         return None, ["the prompt edit's replacement is empty"]
@@ -150,19 +157,24 @@ def validate(p: Proposal, parent: AgentSpec, taken: set[str]) -> list[str]:
         reasons.append("changes nothing")
     if p.model and p.model == parent.model:
         reasons.append(f"model is already {p.model}")
-    if (p.checks or p.accept_words) and parent.kind not in ("o1", "o2"):
-        reasons.append(f"code vetoes need an o1 or o2 parent, not {parent.kind}")
+    if not parent.kind.startswith(f"{ARCHITECTURE}/"):
+        reasons.append(f"the levers are {ARCHITECTURE}'s; the parent is {parent.kind}")
+        return reasons
     reasons += edited_prompt(p, parent)[1]
     return reasons
 
 
 def behaviour_key(spec: AgentSpec) -> str:
-    """What an agent does, independent of names: its kind, model profile, settings and the text of its
-    prompts, but not which file a prompt is in. A proposal that copies an earlier agent under a new name,
-    or saves an earlier prompt as a new version, gets the same key."""
+    """What an agent does, independent of names: its model profile, settings, code and the text of the
+    prompts it renders, but not its version number or which file a prompt is in. A proposal that copies
+    an earlier agent under a new name, or saves an earlier prompt in a new version, gets the same key."""
     config = spec.ref().config
-    body = {**config, "params": {k: v for k, v in config["params"].items() if k != "prompt"},
-            "prompts": sorted(config.get("prompts", {}).values())}
+    body = {**config, "kind": spec.kind.split("/")[0], "params": {k: v for k, v in config["params"].items()
+                                                                   if k != "prompt"},
+            "prompts": sorted(agent_prompts(spec).values()) if packages.is_version(spec.kind)
+            else sorted(config.get("prompts", {}).values())}
+    if packages.is_version(spec.kind):
+        body["code"] = packages.code_hash(spec.kind, skip=("prompts",))
     return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
@@ -180,57 +192,55 @@ async def known_agents(store: Store) -> dict[str, str]:
     return known
 
 
-def _next_prompt_version(family: str) -> str:
-    versions = [int(m.group(1)) for f in prompts.path(f"{family}.v1").parent.glob(f"{family}.v*.md")
+def _next_prompt_version(folder: PromptDir, family: str) -> str:
+    versions = [int(m.group(1)) for f in folder.folder.glob(f"{family}.v*.md")
                 if (m := re.search(r"\.v(\d+)\.md$", f.name))]
     return f"{family}.v{max(versions, default=0) + 1}"
 
 
 def write(proposals: list[Proposal], parent_name: str, source: str = "the climb loop (regateo propose)",
           known: dict[str, str] | None = None) -> tuple[list[Written], list[Rejected]]:
-    """Validate, then write an agent config per good proposal (configs/agents/<kind>/<name>.yaml).
-    `known` (from `known_agents`): a proposal that behaves exactly like an agent already measured, or
-    like an earlier proposal in this batch, is rejected and its files removed."""
+    """Validate, then write an agent config per good proposal. Settings-only proposals go into the parent's
+    version (agents/<arch>/<version>/configs/<name>.yaml); a prompt rewrite gets a new version with the new
+    prompt. `known` (from `known_agents`): a proposal that behaves exactly like an agent already measured,
+    or like an earlier proposal in this batch, is rejected and its files removed."""
     parent = AgentSpec.resolve(parent_name)
     known = {behaviour_key(parent): f"the parent, {parent_name}", **(known or {})}
     written, rejected = [], []
     for p in proposals:
-        vetoed = p.checks or p.accept_words
-        folder = configs_dir() / "agents" / ("o2" if vetoed else parent.kind)
-        taken = {f.stem for f in folder.glob("*.yaml")} | {w.proposal.name for w in written}
+        taken = {w.proposal.name for w in written}
+        if packages.is_version(parent.kind):
+            taken |= {f.stem for f in (agents_dir() / parent.kind / "configs").glob("*.yaml")}
         if reasons := validate(p, parent, taken):
             rejected.append(Rejected(proposal=p, reasons=reasons))
             continue
         ch = _changes(p)
         params = dict(ch["params"])
-        prompt_file = None
+        version, made, prompt_file = parent.kind, None, None
         text, _ = edited_prompt(p, parent)
         if text is not None:
+            version = made = new_version(parent.kind)
             family = re.sub(r"\.v\d+$", "", parent.params.get("prompt", "negotiator_system"))
-            ref = _next_prompt_version(family)
-            path = prompts.path(f"{family}.v1").parent / f"{ref}.md"
-            path.write_text(text)
+            folder = PromptDir(agents_dir() / version / "prompts")
+            ref = _next_prompt_version(folder, family)
+            (folder.folder / f"{ref}.md").write_text(text)
             params["prompt"] = ref
-            prompt_file = path.name
+            prompt_file = f"{version}/prompts/{ref}.md"
         data: dict = {"extends": parent_name}
-        if vetoed and parent.kind == "o1":
-            data["kind"] = "o2"
         if p.model:
             data["model"] = p.model
         if params:
             data["params"] = params
-        folder.mkdir(parents=True, exist_ok=True)
+        path = agents_dir() / version / "configs" / f"{p.name}.yaml"
         header = (f"# Proposed by {source}. Targets: {' '.join(p.failure.split())}\n"
                   f"# Hypothesis: {' '.join(p.hypothesis.split())}\n")
-        (folder / f"{p.name}.yaml").write_text(header + yaml.safe_dump(data, sort_keys=False, width=1000))
-        agent = f"{folder.name}/{p.name}"
-        spec = AgentSpec.resolve(agent)
-        prompt_refs(spec)                                    # fails loudly if a prompt ref is broken
-        key = behaviour_key(spec)
+        path.write_text(header + yaml.safe_dump(data, sort_keys=False, width=1000))
+        agent = f"{version}/{p.name}"
+        key = behaviour_key(AgentSpec.resolve(agent))
         if key in known:
-            (folder / f"{p.name}.yaml").unlink()
-            if prompt_file:
-                (prompts.path(f"{family}.v1").parent / prompt_file).unlink()
+            path.unlink()
+            if made:
+                remove_version(made)
             rejected.append(Rejected(proposal=p, reasons=[f"behaves exactly like {known[key]}"]))
             continue
         known[key] = f"{agent}, proposed in this batch"

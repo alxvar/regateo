@@ -8,11 +8,11 @@ from __future__ import annotations
 import random
 
 from regateo.agents.base import AgentSpec, TrustedContext, register
-from regateo.agents.common import fmt_price, standing_offer
 from regateo.core.agent import Observation
 from regateo.core.messages import ActionKind, Move
 from regateo.core.roles import Role, sign
 from regateo.core.scenario import PrivateView
+from regateo.opponents.common import fmt_price, standing_offer
 
 
 class ScriptedOpponent:

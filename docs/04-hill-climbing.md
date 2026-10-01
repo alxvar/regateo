@@ -104,7 +104,7 @@ The proposer sees exactly what is in the bundle, so isolation holds by construct
 | Dev transcripts, including opponent messages: that is what our agent sees live | Anything from the holdout |
 | The gym report for dev runs | Referee code and bench files |
 
-The only files it may add are new agent configs under `configs/agents/` and new prompt versions.
+The only files it may add are new agent configs, and new versions of the agent that differ from their parent in one prompt.
 
 Dev transcripts still reveal how the scripted opponents behave, and those are deterministic, so the proposer can overfit to them. The holdout's different opponents are there to catch that.
 

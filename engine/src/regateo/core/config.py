@@ -20,6 +20,11 @@ def configs_dir() -> Path:
     return Path(os.environ.get("REGATEO_CONFIGS", ENGINE_DIR / "configs"))
 
 
+def agents_dir() -> Path:
+    """Agent packages: agents/<architecture>/<version>/ (agent_sdk.packages)."""
+    return Path(os.environ.get("REGATEO_AGENTS", REPO_DIR / "agents"))
+
+
 def data_dir() -> Path:
     path = Path(os.environ.get("REGATEO_DATA", REPO_DIR / "data"))
     path.mkdir(parents=True, exist_ok=True)

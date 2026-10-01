@@ -18,17 +18,25 @@ class Agent(Protocol):                      # agent_sdk
   - `meta` is for logs only and never delivered (§4).
 - **Async and non-blocking.** A run plays up to 32 matches at once in one event loop. Don't use `time.sleep`, synchronous HTTP or other blocking calls.
 
-## 2. Registering
+## 2. Packaging
 
-```python
-@register("<kind>", prompts=<function listing the prompt refs a spec renders>)
-def build(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> Agent: ...
+An agent is one version of one architecture, a package under `agents/` (`agent_sdk.packages`):
+
+```
+agents/<architecture>/
+  JOURNAL.md            what was tried on this architecture, version by version
+  lib/                  code its versions share (optional)
+  v<N>/
+    __init__.py         def build(config: AgentConfig, view: PrivateView, ctx: AgentContext) -> Agent
+    prompts/            this version's prompts, rendered with agent_sdk.PromptDir
+    configs/<name>.yaml its variants: `model`, `params`, optionally `extends: <other config>`
+    tests/              tests on agent_sdk.testing (FakeLLM), no GPU
 ```
 
-- **Code** goes in its own package, `engine/src/regateo/agents/<name>/`. Import it from `regateo/agents/__init__.py` so it registers.
-- **Config** goes in `engine/configs/agents/<name>.yaml` (`kind`, `model`, `params`). Every setting that changes behaviour is a param, because the config is the agent's identity (`AgentSpec.ref`). Validate params in the builder and raise `ValueError` on unknown values, as `build_o2` does.
-- **`prompts=` lists every prompt file the spec renders.** The agent's identity and the LLM cache key fingerprint those files. If a prompt is missing from the list, editing it doesn't make a new agent, and the old results mix with the new ones.
-- **Prompts** live in `agents/prompts/<name>.vN.md` and are rendered with `prompts.render`. Never edit a file listed in `configs/frozen.json`; add the next version instead.
+- **A config is named `<architecture>/v<N>/<name>`**, e.g. `single_call/v1/baseline`. Every setting that changes behaviour is a param. Validate params in `build` and raise `ValueError` on unknown values.
+- **Identity:** a version's code and prompts are one hash (its folder and its architecture's `lib/`, without configs and tests), and a config adds its model and params. Any change to code or prompts makes a different agent, so stored results never mix.
+- **Freezing:** a version with benchmark results is listed in `engine/configs/frozen.json`, and a test fails if it changes. A change to its code or prompts is a new version (copy it to `v<N+1>`); a new config under an existing version is fine.
+- **Imports:** a version imports only `agent_sdk`, the standard library, its own modules and its architecture's `lib/` (relative imports, `from ..lib import common`).
 
 ## 3. Rules
 
@@ -61,7 +69,7 @@ Code may enforce hard invariants. It must not decide what to offer, how much to 
 2. A message that doesn't accept must not read as accepting.
 3. Never reveal the walk-away price.
 
-The baseline's vetoes enforce the first two. You may reuse `check(..., "limit+mentions")`, `accept_word_check(..., "reader")` and `repair` from `agents/baselines/o2.py`, or enforce the rules your own way. The first one is a promotion gate: a single deal past the limit on any bench fails the candidate outright.
+The baseline's vetoes enforce the first two. You may reuse `check(..., "limit+mentions")`, `accept_word_check(..., "reader")` and `repair` from `agents/single_call/v1/vetoes.py`, or enforce the rules your own way. The first one is a promotion gate: a single deal past the limit on any bench fails the candidate outright.
 
 ## 4. `Move.meta`
 
@@ -78,8 +86,8 @@ Other keys (stage traces, beliefs) are free. Keep them small and JSON-serialisab
 
 ## 5. What a builder may look at
 
-- **Read freely:** `agent-sdk/`, `core/`, `agents/base.py`, `agents/common.py`, `agents/baselines/`, `agents/prompts/negotiator_system.*`, `llm/` (for usage), `protocol/`, docs 01–05 (05 is the record of what we've learned), `docs/experiments/`, and transcripts of your own dev runs (`regateo report`, the UI, `regateo workspace`).
-- **Don't read:** `agents/opponents/`, the `persona_*` prompts, `referee/`, `configs/benches/`, `configs/arena/`, or anything from a holdout run. They are the exam: designing against them makes dev scores meaningless. `agents/common.py` calls the referee's price parser and reader; using those helpers is fine, but studying their internals to find out what gets through is not.
+- **Read freely:** `agent-sdk/`, `agents/single_call/` (the baseline's architecture), `core/`, `llm/` (for usage), `protocol/`, docs 01–05 (05 is the record of what we've learned), `docs/experiments/`, and transcripts of your own dev runs (`regateo report`, the UI, `regateo workspace`).
+- **Don't read:** `engine/src/regateo/opponents/`, `referee/`, `configs/benches/`, `configs/arena/`, or anything from a holdout run. They are the exam: designing against them makes dev scores meaningless. `agents/common.py` calls the referee's price parser and reader; using those helpers is fine, but studying their internals to find out what gets through is not.
 - **Don't run:** the holdout or the league. A person runs them on the finished candidate.
 
 ## 6. Done

@@ -1,19 +1,17 @@
-"""O2: O1 plus a code veto on hard limits (docs/02 O2, docs/03 §2.6 and §2.8).
+"""Code vetoes on hard limits (docs/02 O2, docs/03 §2.6 and §2.8).
 
 The model decides; code checks the decision against rules it can never be talked out of.
-A failed check gets one retry with feedback, then the move is repaired deterministically.
 """
 from __future__ import annotations
 
 import re
 
-from agent_sdk import AgentContext, LLMError, Move, Observation, PrivateView, sign
-
-from regateo.agents.base import AgentSpec, register
-from regateo.agents.baselines.o1 import Decision, EndToEndAgent
-from regateo.agents.common import fmt_price, opening_price, our_offers, safe_fallback, standing_offer
+from agent_sdk import Observation, sign
 from regateo.referee.prices import find_prices, stated_prices
 from regateo.referee.reader import is_acceptance
+
+from ..lib.common import fmt_price, opening_price, our_offers, standing_offer
+from .decision import Decision
 
 TOL = 0.005
 
@@ -134,38 +132,3 @@ def repair(d: Decision, obs: Observation) -> Decision:
         u = min(u, s * ours[-1])                            # never walk back
     price = round(s * u, 2)
     return Decision(action="offer", price=price, message=f"I can do {fmt_price(price, v.currency)}.")
-
-
-class VetoedAgent(EndToEndAgent):
-    """Params: as O1, plus `checks` ("all" by default; see `check`) and `accept_words` (none by default;
-    see `accept_word_check`)."""
-
-    stage = "o2"
-
-    async def respond(self, obs: Observation) -> Move:
-        vetoes: list[str] = []
-        feedback = None
-        for _ in range(2):
-            try:
-                decision = await self.decide(obs, feedback)
-            except LLMError as e:
-                return safe_fallback(obs, f"{type(e).__name__}: {e}")
-            problems = check(decision, obs, self.params.get("checks", "all"))
-            if words := self.params.get("accept_words"):
-                problems += accept_word_check(decision, words)
-            if not problems:
-                return self.to_move(decision, vetoes=vetoes) if vetoes else self.to_move(decision)
-            vetoes += problems
-            feedback = " ".join(problems)
-        fixed = repair(decision, obs)
-        return self.to_move(fixed, vetoes=vetoes, repaired=True, rejected=decision.model_dump())
-
-
-@register("o2", prompts=VetoedAgent.prompt_refs)
-def build_o2(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> VetoedAgent:
-    if spec.params.get("checks", "all") not in CHECKS:
-        raise ValueError(f"unknown checks {spec.params['checks']!r}; known: {CHECKS}")
-    if spec.params.get("accept_words") not in (None, *ACCEPT_WORDS):
-        raise ValueError(f"unknown accept_words {spec.params['accept_words']!r}; known: {ACCEPT_WORDS}")
-    return VetoedAgent(spec, view, ctx)
-

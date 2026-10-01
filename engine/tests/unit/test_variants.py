@@ -2,7 +2,6 @@
 import pytest
 
 from regateo.agents import AgentSpec
-from regateo.agents.baselines.o1 import Decision
 from regateo.core import ScenarioSpec, frozen, sample_scenarios
 from regateo.core.roles import Role
 from regateo.gym import GymSpec, build_gym_report, run_gym
@@ -10,6 +9,7 @@ from regateo.llm import registry
 from regateo.llm.cache import CachedClient, CacheMode
 from regateo.llm.providers.fake import FakeProvider
 from regateo.llm.types import LLMRequest
+from regateo.opponents.llm import Decision
 from regateo.runner import MatchJob, RunSettings, run_jobs
 from regateo.storage import Store
 
@@ -19,7 +19,8 @@ SOFT = {"kind": "boulware", "name": "soft", "params": {"boulware": 1.5}}
 def test_frozen_files_unchanged():
     assert frozen.changed() == [], (
         "frozen files changed (configs/frozen.json). They have benchmark results: add a new version "
-        "(e.g. negotiator_system.v2.md) instead. If the edit really changes nothing, re-run `regateo freeze`.")
+        "(e.g. agents/single_call/v2, standard-v2.yaml) instead. If the edit really changes nothing, re-run "
+        "`regateo freeze`.")
 
 
 async def test_profile_settings_are_part_of_the_cache_key(tmp_path):

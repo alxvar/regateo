@@ -65,7 +65,7 @@ def main(verbose: Annotated[bool, typer.Option("-v", "--verbose")] = False) -> N
 
 @app.command()
 def match(
-    seller: Annotated[str, typer.Option(help="agent config name or kind, e.g. o2-qwen, scripted:liar")],
+    seller: Annotated[str, typer.Option(help="agent config name or kind, e.g. single_call/v1/baseline, scripted:liar")],
     buyer: Annotated[str, typer.Option(help="agent config name or kind")],
     model: Annotated[str | None, typer.Option(help="model profile for LLM agents that don't name one")] = None,
     scenario_seed: Annotated[int, typer.Option(help="which sampled scenario to play")] = 0,
@@ -247,7 +247,7 @@ def mine(
 @app.command()
 def propose(
     run_id: str,
-    parent: Annotated[str, typer.Option(help="agent config the challengers extend, e.g. baseline")],
+    parent: Annotated[str, typer.Option(help="agent config the challengers extend, e.g. single_call/v1/baseline")],
     reference: Annotated[str | None, typer.Option(help="reference for the gym (default: the parent)")] = None,
     subject: str = "b",
     n: Annotated[int, typer.Option(help="challengers to ask for")] = 6,
@@ -276,7 +276,7 @@ def propose(
 @app.command()
 def workspace(
     runs: Annotated[list[str], typer.Argument(help="dev benchmark gym runs whose matches it may read")],
-    parent: Annotated[str, typer.Option(help="agent config to improve, e.g. baseline")],
+    parent: Annotated[str, typer.Option(help="agent config to improve, e.g. single_call/v1/baseline")],
     out: Annotated[Path, typer.Option(help="empty folder to write the workspace to")],
     db: DbOpt = None,
 ) -> None:

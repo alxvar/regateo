@@ -1,36 +1,29 @@
-"""O1: one model plays the whole game (docs/02 O1). The baseline every other design must beat."""
+"""One model call per turn decides and writes the move (docs/02 O1), optionally checked by code vetoes
+before it is sent (docs/02 O2, docs/03 §2.6 and §2.8): the architecture of the current baseline."""
 from __future__ import annotations
 
 import secrets
-from typing import Literal
+from pathlib import Path
 
-from agent_sdk import ActionKind, AgentContext, ChatMessage, LLMError, LLMRequest, Move, Observation, PrivateView, Role
-from pydantic import BaseModel, Field
+from agent_sdk import (
+    ActionKind,
+    AgentConfig,
+    AgentContext,
+    ChatMessage,
+    LLMError,
+    LLMRequest,
+    Move,
+    Observation,
+    PrivateView,
+    PromptDir,
+    Role,
+)
 
-from regateo.agents import prompts
-from regateo.agents.base import AgentSpec, register
-from regateo.agents.common import fmt_price, safe_fallback, state_digest
+from ..lib.common import fmt_price, safe_fallback, state_digest
+from .decision import AnalysedDecision, AnalysisFirst, Decision
+from .vetoes import accept_word_check, check, repair
 
-
-class Decision(BaseModel):
-    action: Literal["offer", "accept", "reject", "message", "walk_away"]
-    price: float | None = Field(default=None, description="price offered or accepted; null otherwise")
-    message: str = Field(description="what the other side reads")
-
-
-class AnalysisFirst(BaseModel):
-    """What the model fills in with `analysis` on: private reasoning first, so the price follows from it."""
-    analysis: str = Field(description="private notes; the other side never sees them")
-    action: Literal["offer", "accept", "reject", "message", "walk_away"]
-    price: float | None = Field(default=None, description="price offered or accepted; null otherwise")
-    message: str = Field(description="what the other side reads")
-
-
-class AnalysedDecision(Decision):
-    """A decision with the analysis behind it. The analysis is kept in the move's meta, and left out
-    when the conversation is replayed to the model, like any other private note."""
-    analysis: str
-
+PROMPTS = PromptDir(Path(__file__).parent / "prompts")
 
 OPENING_STUB = "(The negotiation begins. You make the first move.)"
 DEFAULT_PROMPT = "negotiator_system.v1"
@@ -42,36 +35,28 @@ def _analysis_ref(params: dict) -> str | None:
     return DEFAULT_ANALYSIS if a is True else (a or None)
 
 
-class EndToEndAgent:
+class SingleCallAgent:
     """Params:
     - `prompt`: system prompt, `name.vN` (default negotiator_system.v1).
     - `analysis`: true (or a prompt ref) to have the model write private analysis before deciding;
       the instructions in analysis_instructions.v1 are added to the system prompt.
     - `state_digest`: true to add a private summary of the offers so far to each turn (common.state_digest);
       "moves" for the same without how their offer compares with the walk-away price.
-    - `persona` (prompt name, e.g. "tough"), `fence` (wrap opponent text in per-turn random tags),
-      `effort`, `max_tokens`."""
+    - `checks`: code vetoes on each decision before it is sent (vetoes.check): "all", "limit" or
+      "limit+mentions"; none by default. A failed check gets one retry with feedback, then the move is
+      repaired deterministically.
+    - `accept_words`: veto a message that reads as accepting when it doesn't accept (vetoes.accept_word_check):
+      "reader" or "strict"; none by default.
+    - `fence` (wrap opponent text in per-turn random tags), `effort`, `max_tokens`."""
 
-    stage = "o1"
-
-    @staticmethod
-    def prompt_refs(spec: AgentSpec) -> list[str]:
-        """Prompt files this spec renders, for its identity (AgentSpec.ref)."""
-        refs = [spec.params.get("prompt", DEFAULT_PROMPT)]
-        persona = spec.params.get("persona") or (spec.kind.split(":", 1)[1] if spec.kind.startswith("persona:")
-                                                 else None)
-        if persona:
-            refs.append(f"persona_{persona}")
-        if analysis := _analysis_ref(spec.params):
-            refs.append(analysis)
-        return refs
-
-    def __init__(self, spec: AgentSpec, view: PrivateView, ctx: AgentContext):
-        self.name = spec.label
+    def __init__(self, config: AgentConfig, view: PrivateView, ctx: AgentContext):
+        self.name = config.name
         self.view = view
         self.ctx = ctx
-        self.params = spec.params
-        self.llm = ctx.llm(spec.model, self.stage)
+        self.params = config.params
+        self.vetoed = bool(self.params.get("checks") or self.params.get("accept_words"))
+        self.stage = "o2" if self.vetoed else "o1"
+        self.llm = ctx.llm(config.model, self.stage)
         self.system = self._system_prompt()
 
     def _system_prompt(self) -> str:
@@ -90,9 +75,8 @@ class EndToEndAgent:
                          f"{f(lo)} and {f(hi)}.")
         if v.context:
             extra.append(f"- {v.context}")
-        persona = self.params.get("persona")
         analysis = _analysis_ref(self.params)
-        system = prompts.render(
+        system = PROMPTS.render(
             self.params.get("prompt", DEFAULT_PROMPT),
             role=v.role.value,
             item=v.item,
@@ -102,9 +86,9 @@ class EndToEndAgent:
             market_high=f(v.market_high),
             extra_info="\n".join(extra),
             protocol=self.ctx.protocol.description,
-            persona=f"\n{prompts.render(f'persona_{persona}')}\n" if persona else "",
+            persona="",
         )
-        return f"{system}\n\n{prompts.render(analysis)}" if analysis else system
+        return f"{system}\n\n{PROMPTS.render(analysis)}" if analysis else system
 
     def _messages(self, obs: Observation, feedback: str | None = None) -> list[ChatMessage]:
         me = obs.view.role
@@ -159,13 +143,25 @@ class EndToEndAgent:
                     meta={"decision": d.model_dump(), **meta})
 
     async def respond(self, obs: Observation) -> Move:
-        try:
-            decision = await self.decide(obs)
-        except LLMError as e:
-            return safe_fallback(obs, f"{type(e).__name__}: {e}")
-        return self.to_move(decision)
-
-
-@register("o1", prompts=EndToEndAgent.prompt_refs)
-def build_o1(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> EndToEndAgent:
-    return EndToEndAgent(spec, view, ctx)
+        if not self.vetoed:
+            try:
+                decision = await self.decide(obs)
+            except LLMError as e:
+                return safe_fallback(obs, f"{type(e).__name__}: {e}")
+            return self.to_move(decision)
+        vetoes: list[str] = []
+        feedback = None
+        for _ in range(2):
+            try:
+                decision = await self.decide(obs, feedback)
+            except LLMError as e:
+                return safe_fallback(obs, f"{type(e).__name__}: {e}")
+            problems = check(decision, obs, self.params["checks"]) if self.params.get("checks") else []
+            if words := self.params.get("accept_words"):
+                problems += accept_word_check(decision, words)
+            if not problems:
+                return self.to_move(decision, vetoes=vetoes) if vetoes else self.to_move(decision)
+            vetoes += problems
+            feedback = " ".join(problems)
+        fixed = repair(decision, obs)
+        return self.to_move(fixed, vetoes=vetoes, repaired=True, rejected=decision.model_dump())

@@ -13,7 +13,7 @@ from statistics import mean
 from agent_sdk import ActionKind, AgentContext, Move, Observation, PrivateView, Role, sign
 
 from regateo.agents.base import AgentSpec, register
-from regateo.agents.common import fmt_price, opponent_offers
+from regateo.opponents.common import fmt_price, opponent_offers
 
 
 @dataclass

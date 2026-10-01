@@ -2,8 +2,8 @@
 # prompt's own rule. Does making the rule concrete, or showing the model the moves, keep more value?
 name: exp-001-reciprocity
 bench: standard-v1
-reference: baseline
-challengers: [b1/reciprocity, b1/moves, b1/reciprocity-moves]
+reference: single_call/v1/baseline
+challengers: [single_call/v1/reciprocity, single_call/v1/moves, single_call/v1/reciprocity-moves]
 halving: true
 early_stop: true
 settings: {concurrency: 32, cache: readwrite}

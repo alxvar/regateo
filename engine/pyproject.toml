@@ -33,11 +33,6 @@ dev = [
 [tool.uv.sources]
 regateo-agent-sdk = { workspace = true }
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
-markers = ["live: calls a real model endpoint (skipped unless credentials/endpoint are set)"]
-
 [tool.ruff]
 line-length = 120
 target-version = "py311"

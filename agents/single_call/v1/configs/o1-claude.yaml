@@ -1,0 +1,3 @@
+# Plain O1 on Claude: no strategy prompt, no vetoes.
+model: claude-opus-5
+params: {effort: medium}

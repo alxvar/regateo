@@ -1,3 +1,18 @@
 # uv workspace: the engine, and the SDK that agents are written against.
 [tool.uv.workspace]
 members = ["engine", "agent-sdk"]
+
+# One test run covers the SDK, the engine and every agent version: `uv run pytest` from here.
+[tool.pytest.ini_options]
+testpaths = ["agent-sdk/tests", "engine/tests", "agents"]
+asyncio_mode = "auto"
+addopts = "--import-mode=importlib"
+markers = ["live: calls a real model endpoint (skipped unless credentials/endpoint are set)"]
+
+# For agents/ (the engine and the SDK carry the same settings in their own pyproject).
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]

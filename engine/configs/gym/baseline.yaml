@@ -2,6 +2,6 @@
 # prompt, no vetoes), so the baseline's numbers have a reference point.
 name: baseline
 bench: standard-v1
-reference: o1-qwen
-challengers: [baseline]
+reference: single_call/v1/o1-qwen
+challengers: [single_call/v1/baseline]
 settings: {concurrency: 32, cache: readwrite}

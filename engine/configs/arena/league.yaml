@@ -3,9 +3,9 @@
 # older one, find out why before the next round.
 name: league
 roster:
-  - baseline                 # the reference; add each promoted agent below it
-  - o1-qwen
-  - o2-qwen
+  - single_call/v1/baseline  # the reference; add each promoted agent below it
+  - single_call/v1/o1-qwen
+  - single_call/v1/o2-qwen
   - boulware
   - {kind: "persona:tough", model: qwen-local, name: tough-qwen}
 games_per_pair: 10

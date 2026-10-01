@@ -1,9 +1,11 @@
-"""Negotiating agents built from specs.
+"""Building agents from specs: agent versions under agents/ and the engine's own kinds.
 
-Importing this package registers every built-in kind: o1, o2, boulware, scripted:<name>
-and persona:<name>. Build one with `build_agent(AgentSpec.resolve(...), view, ctx)`.
+Importing this package registers the engine's kinds (regateo.opponents). Build an agent with
+`build_agent(AgentSpec.resolve(...), view, ctx)`.
 """
-from regateo.agents import baselines, opponents  # noqa: F401  (registers builders)
-from regateo.agents.base import AgentContext, AgentSpec, TrustedContext, build_agent, known_kinds, register
+from agent_sdk import AgentContext
+
+from regateo import opponents  # noqa: E402, F401, I001  (registers the engine's kinds; imports AgentSpec)
+from regateo.agents.base import AgentSpec, TrustedContext, build_agent, known_kinds, register
 
 __all__ = ["AgentContext", "AgentSpec", "TrustedContext", "build_agent", "known_kinds", "register"]

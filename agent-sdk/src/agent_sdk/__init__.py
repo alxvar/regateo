@@ -5,6 +5,7 @@ an `Observation` each turn, and reaches models only through its `AgentContext`. 
 about the match, the opponent or the referee is available to it.
 """
 from agent_sdk.agent import Abort, Agent, Observation
+from agent_sdk.config import AgentConfig
 from agent_sdk.context import AgentContext, LLMFactory, ProtocolInfo
 from agent_sdk.llm import (
     ChatMessage,
@@ -19,11 +20,13 @@ from agent_sdk.llm import (
     Usage,
 )
 from agent_sdk.messages import ActionKind, Message, Move
+from agent_sdk.prompts import PromptDir
 from agent_sdk.roles import Role, better_or_equal, other, sign
 from agent_sdk.view import PrivateView
 
 __all__ = [
-    "Abort", "ActionKind", "Agent", "AgentContext", "ChatMessage", "LLMBadOutput", "LLMClient", "LLMError",
-    "LLMFactory", "LLMRateLimited", "LLMRefusal", "LLMRequest", "LLMResponse", "LLMTimeout", "Message", "Move",
-    "Observation", "PrivateView", "ProtocolInfo", "Role", "Usage", "better_or_equal", "other", "sign",
+    "Abort", "ActionKind", "Agent", "AgentConfig", "AgentContext", "ChatMessage", "LLMBadOutput", "LLMClient",
+    "LLMError", "LLMFactory", "LLMRateLimited", "LLMRefusal", "LLMRequest", "LLMResponse", "LLMTimeout", "Message",
+    "Move", "Observation", "PrivateView", "PromptDir", "ProtocolInfo", "Role", "Usage", "better_or_equal", "other",
+    "sign",
 ]

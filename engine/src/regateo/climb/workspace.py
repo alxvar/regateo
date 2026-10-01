@@ -9,16 +9,15 @@ into `candidates/`, and `adopt` validates them and turns them into agent configs
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, Field
 
-from regateo.agents import AgentSpec, prompts
-from regateo.agents.base import prompt_refs
+from regateo.agents import AgentSpec
 from regateo.cli import format as fmt
 from regateo.climb.propose import PromptEdit, Proposal, Rejected, Written, tried, write
+from regateo.climb.versions import agent_prompts, prompt_dir
 from regateo.core.roles import Role, other
 from regateo.gym import build_gym_report
 from regateo.storage.store import Store
@@ -77,9 +76,8 @@ def _prepare(out: Path, parent: str) -> None:
     (out / "candidates").mkdir()
     (out / "agent" / "config.yaml").write_text(yaml.safe_dump(
         {"name": parent, "kind": spec.kind, "model": spec.model, "params": spec.params}, sort_keys=False))
-    for ref in prompt_refs(spec):
-        if not ref.startswith("persona_"):
-            shutil.copy(prompts.path(ref), out / "agent" / "prompts" / f"{ref}.md")
+    for ref, text in agent_prompts(spec).items():
+        (out / "agent" / "prompts" / f"{ref}.md").write_text(text)
 
 
 def _write_run(folder: Path, report: str, matches: list[dict]) -> None:
@@ -114,7 +112,7 @@ def adopt(folder: Path, parent: str | None = None,
     `parent` defaults to the agent the workspace was made from."""
     parent = parent or workspace_meta(folder)["parent"]
     spec = AgentSpec.resolve(parent)
-    old = prompts.path(spec.params.get("prompt", "negotiator_system.v1")).read_text()
+    old = prompt_dir(spec).text(spec.params.get("prompt", "negotiator_system.v1"))
     proposals, rejected = [], []
     for d in sorted(p for p in (folder / "candidates").iterdir() if p.is_dir()):
         try:
@@ -161,8 +159,9 @@ template in `agent/prompts/negotiator_system.*.md`, with `$placeholders` filled 
 so far, and answers with JSON: `action` (offer, accept, reject, message, walk_away), `price`, and `message` (what the
 other side reads). The referee reads the message text, so the message is what counts.
 
-The agent kind is `{AgentSpec.resolve(parent).kind}`. For kind o2, code checks each decision before it is sent
-(`checks` below); a decision that fails gets one retry with feedback, then is replaced by a safe move. In the data,
+The agent is version `{AgentSpec.resolve(parent).kind}`. When its config sets `checks` or `accept_words` (below),
+code checks each decision before it is sent; a decision that fails gets one retry with feedback, then is replaced
+by a safe move. In the data,
 `vetoed_first` shows what failed, and `repaired` that the safe move was sent.
 
 ## The data

@@ -1,0 +1,3 @@
+# O2 as first built: O1 plus all of its original code checks (vetoes.check, "all").
+model: qwen-local
+params: {checks: all}

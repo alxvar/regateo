@@ -1,0 +1,2 @@
+# Plain O1: one model call per turn, no strategy prompt, no vetoes.
+model: qwen-local

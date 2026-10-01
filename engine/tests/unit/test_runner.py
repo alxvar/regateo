@@ -1,11 +1,11 @@
 import pytest
 
 from regateo.agents import AgentSpec
-from regateo.agents.baselines.o1 import Decision
 from regateo.core import ScenarioSpec, sample_scenarios
 from regateo.llm import registry
 from regateo.llm.limits import LimitedClient
 from regateo.llm.providers.fake import FakeProvider
+from regateo.opponents.llm import Decision
 from regateo.runner import MatchJob, RunSettings, match_id, run_jobs
 from regateo.storage import Store
 

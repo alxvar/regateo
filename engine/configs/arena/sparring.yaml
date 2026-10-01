@@ -1,8 +1,8 @@
 # Round robin: everyone plays everyone on 20 scenarios, both roles.
 name: sparring
 roster:
-  - o1-qwen
-  - o2-qwen
+  - single_call/v1/o1-qwen
+  - single_call/v1/o2-qwen
   - boulware
   - {kind: "persona:tough", model: qwen-local, name: tough-qwen}
   - scripted:hardliner

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from agent_sdk import ActionKind, Message, Move, Observation, PrivateView, Role, sign
-
 from regateo.core.messages import ReadKind
 from regateo.referee.prices import stated_prices
 from regateo.referee.reader import with_readings

@@ -34,7 +34,7 @@ Sources older than the experiment log: idea-1 (first prototype, offline arena: [
 
 ## The current reference and why
 
-`engine/configs/agents/baseline.yaml` is O1's single model call per turn, with strategy prompt `negotiator_system.v2` (L1), plus two of O2's code vetoes: `checks: limit+mentions` (L7) and `accept_words: reader` (L9). The vetoes are guardrails: they never decide what to offer or when to accept (L6).
+`single_call/v1/baseline` (`agents/single_call/v1/configs/baseline.yaml`) is O1's single model call per turn, with strategy prompt `negotiator_system.v2` (L1), plus two of O2's code vetoes: `checks: limit+mentions` (L7) and `accept_words: reader` (L9). The vetoes are guardrails: they never decide what to offer or when to accept (L6).
 
 ## What our evidence doesn't cover yet
 

@@ -13,12 +13,12 @@ from statistics import fmean
 
 from pydantic import BaseModel
 
-from regateo.agents import AgentSpec, prompts
-from regateo.agents.base import prompt_refs
-from regateo.agents.common import fmt_price
+from regateo.agents import AgentSpec
+from regateo.climb.versions import agent_prompts
 from regateo.core.messages import Message
 from regateo.core.outcome import Outcome
 from regateo.core.roles import Role, other
+from regateo.opponents.common import fmt_price
 from regateo.storage.store import MatchRow, Store
 
 MAX_CHARS = 240          # per message in a transcript: keeps a bundle inside a local model's context
@@ -177,7 +177,7 @@ async def mine(store: Store, run_id: str, *, subject: str = "b", worst: int = 5)
         transcripts.append(text)
 
     agent = AgentSpec.model_validate(spec)
-    own = {ref: prompts.path(ref).read_text() for ref in prompt_refs(agent) if not ref.startswith("persona_")}
+    own = agent_prompts(agent)
     return Bundle(run_id=run_id, subject=subject, agent=spec, prompts=own, summary=_summary(rows, regret),
                   transcripts=transcripts)
 

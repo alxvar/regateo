@@ -2,26 +2,27 @@
 
 One file per question: `NNN-<question>.md`. Null results count: they stop us from testing the same idea twice.
 
-**Current reference:** `baseline` on bench `standard-v1`, set up 2026-09-30 from the experiments before it.
+**Current reference:** `single_call/v1/baseline` on bench `standard-v1`, set up 2026-09-30 from the experiments before it.
 What we believe across all experiments, and why the baseline is built as it is: [05-learnings.md](../05-learnings.md).
 
 ## How to run a variant
 
 1. **Change something without editing frozen files.** Everything with benchmark results is listed in
-   `engine/configs/frozen.json`, and a unit test fails if it changes. Add the next version instead:
-   `negotiator_system.v3.md`, `qwen-local-<variant>.yaml`, `standard-v2.yaml`.
-2. **Describe the variant as a small agent config** that extends its parent, in `engine/configs/agents/<family>/`:
+   `engine/configs/frozen.json`, and a unit test fails if it changes. Add the next version instead: a new agent
+   version (`agents/single_call/v2/`, a copy of v1 with the change) for code or prompts, `qwen-local-<variant>.yaml`,
+   `standard-v2.yaml`.
+2. **Describe the variant as a small agent config** that extends its parent, in its version's `configs/`
+   ([06 §2](../06-agent-contract.md#2-packaging)), e.g. `agents/single_call/v1/configs/moves.yaml`:
    ```yaml
    extends: baseline
-   params: {prompt: negotiator_system.v3}
+   params: {state_digest: moves}
    ```
-   New behaviour in code gets a param whose default keeps the old behaviour, so older configs still mean what they did.
 3. **Point a gym config at a bench**, with the reference and any number of challengers:
    ```yaml
    name: exp-001-...
    bench: standard-v1
-   reference: baseline
-   challengers: [o2/firmer-close, o2/think-first]
+   reference: single_call/v1/baseline
+   challengers: [single_call/v1/firmer-close, single_call/v2/think-first]
    halving: true           # cut the worse half at 48, 96... pairs until two are left
    early_stop: true        # stop challengers that are clearly behind
    settings: {concurrency: 32, cache: readwrite}

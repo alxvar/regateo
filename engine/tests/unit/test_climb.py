@@ -1,38 +1,41 @@
 """The climb loop's pieces: mining a run's failures, and validating and writing proposals."""
+import shutil
+
 import pytest
 
-from regateo.agents import AgentSpec, prompts
+from regateo.agents import AgentSpec
 from regateo.climb import propose as prop
 from regateo.climb.mine import mine
 from regateo.climb.propose import PromptEdit, Proposal, Proposals, ask, validate, write, write_experiment
+from regateo.core.config import REPO_DIR
 from regateo.gym import GymSpec, run_gym
 from regateo.llm.providers.fake import FakeProvider
 from regateo.storage import Store
 
-V1 = prompts.path("negotiator_system.v1").read_text()
+REAL = REPO_DIR / "agents" / "single_call"
+V1 = (REAL / "v1" / "prompts" / "negotiator_system.v1.md").read_text()
 
 
 @pytest.fixture
 def configs(tmp_path, monkeypatch):
-    (tmp_path / "agents" / "o1").mkdir(parents=True)
+    """A copy of the single_call architecture with one config, `single_call/v1/base` (plain O1 on Qwen)."""
     (tmp_path / "gym").mkdir()
     (tmp_path / "benches").mkdir()
-    (tmp_path / "agents" / "o1" / "base.yaml").write_text("kind: o1\nmodel: qwen-local\n")
-    (tmp_path / "prompts").mkdir()
-    (tmp_path / "prompts" / "negotiator_system.v1.md").write_text(V1)
-    for ref in ("proposer_system.v1", "analysis_instructions.v1"):
-        (tmp_path / "prompts" / f"{ref}.md").write_text(prompts.path(ref).read_text())
+    arch = tmp_path / "agents" / "single_call"
+    shutil.copytree(REAL, arch, ignore=shutil.ignore_patterns("configs", "tests", "__pycache__"))
+    (arch / "v1" / "configs").mkdir()
+    (arch / "v1" / "configs" / "base.yaml").write_text("model: qwen-local\n")
     (tmp_path / "docs" / "experiments").mkdir(parents=True)
     (tmp_path / "docs" / "experiments" / "007-old.md").write_text("x")
     monkeypatch.setenv("REGATEO_CONFIGS", str(tmp_path))
+    monkeypatch.setenv("REGATEO_AGENTS", str(tmp_path / "agents"))
     monkeypatch.setenv("REGATEO_DATA", str(tmp_path / "data"))
-    monkeypatch.setattr(prompts, "_DIR", tmp_path / "prompts")
     monkeypatch.setattr(prop, "REPO_DIR", tmp_path)
     return tmp_path
 
 
 def test_validate(configs):
-    parent = AgentSpec.resolve("o1/base")
+    parent = AgentSpec.resolve("single_call/v1/base")
     ok = Proposal(name="firm", failure="f", hypothesis="h", fence=True)
     assert validate(ok, parent, set()) == []
     assert any("taken" in r for r in validate(ok, parent, {"firm"}))
@@ -45,6 +48,7 @@ def test_validate(configs):
     assert any("occurs 0 times" in r for r in validate(absent, parent, set()))
     priced = ok.model_copy(update={"prompt_edit": PromptEdit(find="", replace="Never open below $150 or 20%.")})
     assert validate(priced, parent, set()) == []                # "$150" is escaped, not a placeholder
+    assert any("levers are single_call's" in r for r in validate(ok, AgentSpec(kind="boulware"), set()))
 
 
 def test_write(configs):
@@ -53,21 +57,26 @@ def test_write(configs):
         Proposal(name="close-early", failure="round-limit no-deals", hypothesis="h2",
                  prompt_edit=PromptEdit(find="", replace="Close early when their offer is within 5% of $1,000.")),
         Proposal(name="nothing", failure="f", hypothesis="h3"),
-    ], "o1/base")
-    assert [w.agent for w in written] == ["o2/guard", "o1/close-early"] and rejected[0].proposal.name == "nothing"
-    guard = AgentSpec.resolve("o2/guard")
-    assert guard.kind == "o2" and guard.params == {"checks": "limit"}
-    early = AgentSpec.resolve("o1/close-early")
-    assert early.params == {"prompt": "negotiator_system.v2"} and written[1].prompt_file == "negotiator_system.v2.md"
-    v2 = (configs / "prompts" / "negotiator_system.v2.md").read_text()
-    assert v2.startswith(V1.rstrip("\n")) and v2.endswith("within 5% of $$1,000.\n")
-    assert "hypothesis: h2" in (configs / "agents" / "o1" / "close-early.yaml").read_text().lower()
-    name = write_experiment(written, reference="o1/base", bench="standard-v1", source_run="run_x")
+    ], "single_call/v1/base")
+    assert [w.agent for w in written] == ["single_call/v1/guard", "single_call/v2/close-early"]
+    assert rejected[0].proposal.name == "nothing"
+    guard = AgentSpec.resolve("single_call/v1/guard")
+    assert guard.kind == "single_call/v1" and guard.params == {"checks": "limit"} and guard.model == "qwen-local"
+    # a prompt rewrite is a new version: a copy of the parent's with the new prompt next to the old ones
+    early = AgentSpec.resolve("single_call/v2/close-early")
+    assert early.kind == "single_call/v2" and early.params == {"prompt": "negotiator_system.v4"}
+    assert written[1].prompt_file == "single_call/v2/prompts/negotiator_system.v4.md"
+    v2 = configs / "agents" / "single_call" / "v2"
+    new = (v2 / "prompts" / "negotiator_system.v4.md").read_text()
+    assert new.startswith(V1.rstrip("\n")) and new.endswith("within 5% of $$1,000.\n")
+    assert sorted(p.name for p in (v2 / "configs").iterdir()) == ["close-early.yaml"]
+    assert "hypothesis: h2" in (v2 / "configs" / "close-early.yaml").read_text().lower()
+    name = write_experiment(written, reference="single_call/v1/base", bench="standard-v1", source_run="run_x")
     assert name == "exp-008-climb"
     gym = GymSpec.model_validate({**__import__("yaml").safe_load((configs / "gym" / f"{name}.yaml").read_text()),
                                   "bench": None, "opponents": ["scripted:liar"]})
     assert gym.tier is None and gym.halving is not None and gym.early_stop is not None
-    assert [s.label for s in [gym.a, *gym.extra]] == ["o2-guard", "o1-close-early"]
+    assert [s.label for s in [gym.a, *gym.extra]] == ["single_call-v1-guard", "single_call-v2-close-early"]
     assert "(pending)" in (configs / "docs" / "experiments" / "008-climb.md").read_text()
 
 
@@ -119,9 +128,10 @@ async def test_workspace_export_and_adopt(configs):
 
     from regateo.climb.workspace import adopt, export
     store, run_id = await _run(configs)
-    ws = await export(store, [run_id], "o1/base", configs / "ws")
+    ws = await export(store, [run_id], "single_call/v1/base", configs / "ws")
+    assert [p.name for p in (ws / "agent" / "prompts").iterdir()] == ["negotiator_system.v1.md"]
     assert (ws / "agent" / "prompts" / "negotiator_system.v1.md").read_text() == V1
-    assert not list(ws.rglob("persona_*")) and "o1/base" in (ws / "README.md").read_text()
+    assert not list(ws.rglob("persona_*")) and "single_call/v1/base" in (ws / "README.md").read_text()
     lines = (ws / "data" / run_id / "matches.jsonl").read_text().splitlines()
     m = json.loads(lines[0])
     assert {"our_limit", "their_limit", "messages", "result"} <= set(m) and m["agent"] in ("boulware", "soft")
@@ -136,34 +146,35 @@ async def test_workspace_export_and_adopt(configs):
                                                              + "Never open below USD 150.\n")
     cand("bad-lever", changes={"telepathy": True})
     written, rejected = adopt(ws)
-    assert sorted(w.agent for w in written) == ["o1/rewrite", "o1/think-first"]
+    assert sorted(w.agent for w in written) == ["single_call/v1/think-first", "single_call/v2/rewrite"]
     assert [r.proposal.name for r in rejected] == ["bad-lever"] and "telepathy" in rejected[0].reasons[0]
-    rewrite = next(w for w in written if w.agent == "o1/rewrite")
-    assert "bargaining" in (configs / "prompts" / rewrite.prompt_file).read_text()
+    rewrite = next(w for w in written if w.agent == "single_call/v2/rewrite")
+    assert "bargaining" in (configs / "agents" / rewrite.prompt_file).read_text()
 
 
 async def test_workspace_refuses_holdout_runs(configs):
     from regateo.climb.workspace import export
     store, run_id = await _run(configs, purpose="holdout")
     with pytest.raises(ValueError, match="holdout"):
-        await export(store, [run_id], "o1/base", configs / "ws")
+        await export(store, [run_id], "single_call/v1/base", configs / "ws")
 
 
 def test_repeats_are_rejected(configs):
     from regateo.climb.propose import behaviour_key
     rule = PromptEdit(find="", replace="Close early when their offer is within 5% of your aim.")
     first, _ = write([Proposal(name="firm", failure="f", hypothesis="h", fence=True),
-                      Proposal(name="close", failure="f", hypothesis="h", prompt_edit=rule)], "o1/base")
+                      Proposal(name="close", failure="f", hypothesis="h", prompt_edit=rule)], "single_call/v1/base")
     known = {behaviour_key(AgentSpec.resolve(w.agent)): f"{w.agent} in exp-1 (run_x)" for w in first}
     # the same changes under other names; the prompt edit lands in a new file with the same text
     same = Proposal(name="firm-again", failure="f", hypothesis="h", fence=True)
     reworded = Proposal(name="close-again", failure="f", hypothesis="h", prompt_edit=rule)
     fresh = Proposal(name="digest", failure="f", hypothesis="h", state_digest=True)
-    written, rejected = write([same, reworded, fresh, fresh.model_copy(update={"name": "digest-2"})], "o1/base",
-                              known=known)
-    assert [w.agent for w in written] == ["o1/digest"]
+    written, rejected = write([same, reworded, fresh, fresh.model_copy(update={"name": "digest-2"})],
+                              "single_call/v1/base", known=known)
+    assert [w.agent for w in written] == ["single_call/v1/digest"]
     reasons = {r.proposal.name: r.reasons[0] for r in rejected}
-    assert "o1/firm in exp-1" in reasons["firm-again"] and "o1/close in exp-1" in reasons["close-again"]
+    assert "single_call/v1/firm in exp-1" in reasons["firm-again"]
+    assert "single_call/v2/close in exp-1" in reasons["close-again"]
     assert "this batch" in reasons["digest-2"]
-    assert not (configs / "agents" / "o1" / "firm-again.yaml").exists()
-    assert not (configs / "prompts" / "negotiator_system.v3.md").exists()     # the duplicate prompt is removed
+    assert not (configs / "agents" / "single_call" / "v1" / "configs" / "firm-again.yaml").exists()
+    assert not (configs / "agents" / "single_call" / "v3").exists()     # the duplicate version is removed

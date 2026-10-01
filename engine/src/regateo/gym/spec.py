@@ -61,6 +61,9 @@ class GymSpec(ExperimentSpec):
     purpose: Literal["dev", "holdout", "adversarial"] = "dev"  # set by the bench; decides the promotion checks
     early_stop: EarlyStop | None = None                       # benchmark only: stop clear losers (gym.early)
     halving: Halving | None = None                            # benchmark only: successive halving (gym.early)
+    lines: dict[str, str] = Field(default_factory=dict)       # challenger label -> line (a climb round's
+                                                              # architecture): halving cuts within each line,
+                                                              # down to one finalist per line
     source_run: str | None = None                             # the run this one continues, e.g. a climb screen
     coupled: bool = True                                      # benchmark only: subjects share a pair's random
                                                               # draws (MatchJob.replay_key); False: independent

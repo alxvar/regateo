@@ -403,6 +403,70 @@ def freeze(paths: Annotated[list[Path], typer.Argument(help="files to freeze, e.
         typer.echo(f"frozen {key}")
 
 
+round_app = typer.Typer(help="A climb round over several architectures (regateo.climb.round).", no_args_is_help=True)
+app.add_typer(round_app, name="round")
+
+
+@round_app.command("export")
+def round_export(
+    run: Annotated[str, typer.Argument(help="the last dev gym run the candidates played in")],
+    candidate: Annotated[list[str], typer.Option(help="a config per architecture, e.g. single_call/v1/baseline")],
+    out: Annotated[Path, typer.Option(help="folder for the workspaces, one per architecture")],
+    venv: Annotated[bool, typer.Option(help="give each workspace a .venv with only the agent SDK and pytest")] = True,
+    db: DbOpt = None,
+) -> None:
+    """Step 1: a workspace per candidate, holding only what its builder session may see."""
+    from regateo.climb.round import export
+
+    async def go() -> None:
+        store = await Store.open(_db(db))
+        try:
+            for ws in await export(store, run, candidate, out, venv=venv):
+                typer.echo(f"wrote {ws}")
+        finally:
+            await store.close()
+
+    asyncio.run(go())
+    typer.echo(f"Next: for ws in {out}/*/; do bash engine/scripts/claude_builder.sh \"$ws\" & done; wait\n"
+               f"Then: regateo round collect {out}/* --name <round> --reference <agent>")
+
+
+@round_app.command("collect")
+def round_collect(
+    workspaces: Annotated[list[Path], typer.Argument(help="the round's workspaces, after their sessions")],
+    name: Annotated[str, typer.Option(help="the round's gym config name, e.g. round-01")],
+    reference: Annotated[str, typer.Option(help="the agent every member is measured against")],
+    bench: str = "standard-v2",
+) -> None:
+    """Step 3: take the sessions' variants into agents/ (checked), and write the round's gym config."""
+    from regateo.climb.round import collect, write_round
+    lines = []
+    for ws in workspaces:
+        got = asyncio.run(collect(ws))
+        lines.append(got.line)
+        typer.echo(f"{got.line.arch}: {got.line.parent} + {got.line.variants or 'no variants'}")
+        for why in got.rejected:
+            typer.echo(f"  refused: {why}")
+    path = write_round(name, lines, reference=reference, bench=bench)
+    typer.echo(f"wrote {path}\nNext: regateo gym {name}, then regateo round record <run>")
+
+
+@round_app.command("record")
+def round_record(run: str, db: DbOpt = None) -> None:
+    """Step 4: each line's finalist, its next parent; the round's results go into every architecture's journal."""
+    from regateo.climb.round import record
+
+    async def go() -> None:
+        store = await Store.open(_db(db))
+        try:
+            for arch, parent in (await record(store, run)).items():
+                typer.echo(f"{arch}: next parent {parent}")
+        finally:
+            await store.close()
+
+    asyncio.run(go())
+
+
 @app.command(name="check-agent")
 def check_agent_cmd(kinds: Annotated[list[str], typer.Argument(help="agent versions, e.g. single_call/v1")]) -> None:
     """The submission check (agent_sdk.check): what an agent version's code may import and call."""

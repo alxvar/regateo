@@ -60,17 +60,32 @@ async def _halving(cfg: Halving, jobs: list[MatchJob], store: Store, run_id: str
         if end >= len(pairs) or summary.budget_exhausted:
             return summary
         alive = [s for s in alive if not (stopper and s in stopper.stopped)]
-        if len(alive) > cfg.finalists:
+        groups = _lines(spec, alive)
+        finalists = 1 if spec.lines else cfg.finalists
+        if any(len(g) > finalists for g in groups):
             gains = await _gains(store, run_id, {p for p in pairs if index[p] < end})
-            keep = max(cfg.finalists, math.ceil(len(alive) * cfg.keep))
-            ranked = sorted(alive, key=lambda s: -gains.get(s, -math.inf))
-            for s in ranked[keep:]:
-                halved[s] = end
-            alive = ranked[:keep]
+            alive = []
+            for group in groups:
+                keep = max(finalists, math.ceil(len(group) * cfg.keep))
+                ranked = sorted(group, key=lambda s: -gains.get(s, -math.inf))
+                for s in ranked[keep:]:
+                    halved[s] = end
+                alive += ranked[:keep]
             await store.update_run_config(run_id, {"halved": halved})
             end = min(2 * end, len(pairs))
         else:
             end = len(pairs)
+
+
+def _lines(spec: GymSpec, alive: list[str]) -> list[list[str]]:
+    """The challengers still playing, grouped by line (`spec.lines`), or as one group without lines."""
+    if not spec.lines:
+        return [alive]
+    subjects = spec.subjects()
+    groups: dict[str, list[str]] = defaultdict(list)
+    for s in alive:
+        groups[spec.lines.get(subjects[s].label, subjects[s].label)].append(s)
+    return list(groups.values())
 
 
 async def _gains(store: Store, run_id: str, pairs: set[str]) -> dict[str, float]:

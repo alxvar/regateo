@@ -113,6 +113,17 @@ Dev transcripts still reveal how the scripted opponents behave, and those are de
 
 During matches, agents are already isolated: each gets its `PrivateView` and the messages, nothing else.
 
+### 5.4 A round over several architectures
+
+For the hackathon plan ([07](07-hackathon-plan.md)) the round runs over several architectures at once, one line per architecture, with a Claude Code session per line instead of a proposer call (`regateo.climb.round`):
+
+1. **Export** (`regateo round export RUN --candidate <config> ... --out DIR`): for each candidate, its last dev run's results, a workspace with only what its session may see ([06 §5](06-agent-contract.md#5-what-a-builder-may-look-at)): a copy of its architecture with the journal, its own matches and results, an anonymous leaderboard (Δshare of every agent, names hidden), the public learnings, the contract, and a `.venv` with only the agent SDK and pytest.
+2. **Sessions**, in parallel (`engine/scripts/claude_builder.sh WORKSPACE`): Claude Code in bubblewrap, with that workspace and nothing else. It studies the results and writes up to 3 variants of its candidate, as new configs or a new version, plus a journal entry. It can run the agent's tests and the submission check; it can't run matches.
+3. **Collect** (`regateo round collect DIR/* --name round-NN --reference <agent>`): takes new versions, new configs and the journal entry back into `agents/`, and refuses changes to existing versions or `lib/`, versions that fail the submission check, configs that don't resolve or crash in a smoke match on a fake model, and edits to earlier journal entries. Then it writes the round's gym config: every line's parent and variants against the reference, with successive halving within each line down to one finalist.
+4. **The gym run** (`regateo gym round-NN`), then **record** (`regateo round record RUN`): each line's finalist becomes its next parent (a variant only if it beat its parent), and every architecture's journal gets the round's results.
+
+Each session's results stay in its line: nothing it sees comes from another architecture except the anonymous leaderboard and the public learnings.
+
 ## 6. Noise and cost
 
 Noise on Δshare shrinks with the square root of the number of pairs, so halving it costs 4× the matches. From the exp-001 and o2-vs-o1 full runs:

@@ -2,8 +2,8 @@
 
 One file per question: `NNN-<question>.md`. Null results count: they stop us from testing the same idea twice.
 
-**Current reference:** `baseline` on bench `standard-v1`, set up 2026-09-30 from the experiments before it
-([05-learnings.md](../05-learnings.md)).
+**Current reference:** `baseline` on bench `standard-v1`, set up 2026-09-30 from the experiments before it.
+What we believe across all experiments, and why the baseline is built as it is: [05-learnings.md](../05-learnings.md).
 
 ## How to run a variant
 
@@ -29,6 +29,9 @@ One file per question: `NNN-<question>.md`. Null results count: they stop us fro
    `regateo gym exp-001-...`. Commit first: the run records the commit, and warns when there are uncommitted changes.
 4. **Write up** the hypothesis, run id and result here. A challenger that wins on the full bench is a *candidate*;
    it becomes the reference only after the promotion checklist below.
+5. **Update the learnings.** End the write-up with a `## Learnings` section naming each entry of
+   [05-learnings.md](../05-learnings.md) it adds, strengthens, weakens or refutes, then make those changes there.
+   Null results too: an entry whose scope widened without the effect is a learning.
 
 ## Promotion checklist
 

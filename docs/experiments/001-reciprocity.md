@@ -78,3 +78,12 @@ Did the behaviour change? Share of our concessions bigger than the other side's 
 - **The moves digest raises the deal rate** (78% vs 68%) without deals past the limit, unlike the full digest before
   the reset. Leaving out the walk-away comparison seems to be what removed the harm, but the gain is not significant.
 - Not promoted. Both finalists are worth keeping as a direction (information about moves), not as a rule.
+
+## Learnings
+
+Recorded on 2026-10-01, when the learnings record was introduced.
+
+- L3 new: Qwen doesn't follow a numeric concession rule, even with the numbers.
+- L2 extended: the moves-only digest is the first per-turn summary that didn't hurt.
+- L4 strengthened: we give up 1.6–1.8 times as much as firm opponents over a match.
+- L5 new: gains against scripted opponents, none against the LLM personas.

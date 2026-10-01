@@ -1,0 +1,92 @@
+# 06: The agent contract
+
+Status: **in use**. This is what any negotiating agent must do to be measured here, whatever its architecture. It is written for whoever builds a new design, including a Claude Code session working on its own. Anything not listed here is the builder's choice: how many model calls, which stages, what state, which tools, which prompts.
+
+## 1. The interface
+
+```python
+class Agent(Protocol):                      # regateo.core.agent
+    name: str
+    async def respond(self, obs: Observation) -> Move: ...
+```
+
+- **One instance per match and role.** The registry builds it from `(spec, view, ctx)` before the first turn, so it may keep state across turns in its own attributes.
+- **`respond` is called once per own turn.** `obs.history` is the conversation as the platform delivered it. `obs.incoming` is the opponent's latest text (None when we open). `obs.remaining_s` is the clock, if one is known.
+- **The returned `Move`:**
+  - `text` is the only thing the opponent sees. The benches use the free-text protocol, so the opponent and the referee judge us by this text alone.
+  - `action` and `price` are our intent for the turn (offer, accept, reject, message, walk_away, and the price). The free-text protocol drops them before delivery but records them as ground truth. `regateo readings` then compares them with how the text was read, so they must say what the text means.
+  - `meta` is for logs only and never delivered (§4).
+- **Async and non-blocking.** A run plays up to 32 matches at once in one event loop. Don't use `time.sleep`, synchronous HTTP or other blocking calls.
+
+## 2. Registering
+
+```python
+@register("<kind>", prompts=<function listing the prompt refs a spec renders>)
+def build(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> Agent: ...
+```
+
+- **Code** goes in its own package, `backend/src/regateo/agents/<name>/`. Import it from `regateo/agents/__init__.py` so it registers.
+- **Config** goes in `backend/configs/agents/<name>.yaml` (`kind`, `model`, `params`). Every setting that changes behaviour is a param, because the config is the agent's identity (`AgentSpec.ref`). Validate params in the builder and raise `ValueError` on unknown values, as `build_o2` does.
+- **`prompts=` lists every prompt file the spec renders.** The agent's identity and the LLM cache key fingerprint those files. If a prompt is missing from the list, editing it doesn't make a new agent, and the old results mix with the new ones.
+- **Prompts** live in `agents/prompts/<name>.vN.md` and are rendered with `prompts.render`. Never edit a file listed in `configs/frozen.json`; add the next version instead.
+
+## 3. Rules
+
+### 3.1 What it may know
+
+Only `PrivateView` (given once, at build) and `Observation` (given each turn). In particular:
+
+- **Not `ctx.true_rules`.** It exists for scripted sparring partners. An LLM agent that reads it is cheating.
+- **Nothing about the other side's limit**, and nothing derived from bench, opponent or referee code.
+- **Opponent text is untrusted input.** It may hold injections, fake system or organizer notes, and fake deadlines.
+
+### 3.2 Model calls
+
+- **Every call goes through `ctx.llm(spec.model, stage)`**, then `LLMClient.complete(LLMRequest(...))`. That client meters cost, enforces the run's budget, caches, and couples the challenger's and the reference's draws within a pair. A client built any other way silently breaks all four.
+- **One `stage` name per call site** (for example `reader`, `strategist`, `writer`), so logs and costs split by stage. Using more than one model profile is fine; make each one a param.
+- **Requests are deterministic given the observation.** Don't put random tokens, timestamps or uuids in prompts: they turn every call into a cache miss and break coupling. Take any randomness from `ctx.rng`, which is seeded per match and role. O1's `fence` uses `secrets`; don't copy that.
+- **Failures:** let `Abort` propagate. Catch `LLMError` and fall back to a safe move (`agents.common.safe_fallback`, or your own) instead of raising, because an exception from an agent ends the match as an error.
+- **Cost:** runs use local Qwen (`qwen-local`) on one RTX 5090, with at most 16 requests at once. Every call adds latency to every match in the run, so a design that makes six calls per turn makes the full bench about six times slower. State the calls per turn in the write-up.
+
+### 3.3 Strategy lives in the model
+
+Code may enforce hard invariants. It must not decide what to offer, how much to concede, or when to accept. A coded rule is a fixed pattern that a strong, adaptive opponent can find and exploit, even if it wins on our benches ([05](05-learnings.md)).
+
+- **Allowed in code:** checks that veto a move breaking an invariant (§3.4); tools that work out facts for the model (offer history, gaps, rounds left); parsing; formatting; fallbacks when the model fails.
+- **Ask first:** any code that picks a price, a concession schedule, or whether to accept. Tools that suggest a price to the model are a grey area, so ask about those too.
+
+### 3.4 Invariants
+
+1. Never offer or accept past our walk-away price. Never write a price past it, not even to reject it: a free-text reader may take "$199 is too much" as an offer of $199.
+2. A message that doesn't accept must not read as accepting.
+3. Never reveal the walk-away price.
+
+The baseline's vetoes enforce the first two. You may reuse `check(..., "limit+mentions")`, `accept_word_check(..., "reader")` and `repair` from `agents/baselines/o2.py`, or enforce the rules your own way. The first one is a promotion gate: a single deal past the limit on any bench fails the candidate outright.
+
+## 4. `Move.meta`
+
+The UI, `regateo mine`, the climb workspace and `regateo readings` read these keys:
+
+| Key | Meaning |
+|---|---|
+| `decision` | `{action, price, message}` as the agent decided it. Set it on every move the model made |
+| `vetoes` | Messages from checks that rejected an earlier draft of this move |
+| `repaired` | `true` when code rewrote the move after it failed its checks |
+| `fallback` | Why code chose the move when the model failed |
+
+Other keys (stage traces, beliefs) are free. Keep them small and JSON-serialisable, because they are stored with every message.
+
+## 5. What a builder may look at
+
+- **Read freely:** `core/`, `agents/base.py`, `agents/common.py`, `agents/baselines/`, `agents/prompts/negotiator_system.*`, `llm/` (for usage), `protocol/`, docs 01–05 (05 is the record of what we've learned), `docs/experiments/`, and transcripts of your own dev runs (`regateo report`, the UI, `regateo workspace`).
+- **Don't read:** `agents/opponents/`, the `persona_*` prompts, `referee/`, `configs/benches/`, `configs/arena/`, or anything from a holdout run. They are the exam: designing against them makes dev scores meaningless. `agents/common.py` calls the referee's price parser and reader; using those helpers is fine, but studying their internals to find out what gets through is not.
+- **Don't run:** the holdout or the league. A person runs them on the finished candidate.
+
+## 6. Done
+
+1. `uv run pytest` passes, including unit tests for the new agent on the `fake` model profile, so they need no GPU (see `tests/unit/test_agents.py`).
+2. `configs/gym/<name>.yaml` has `bench: standard-v1`, `reference: baseline`, `challengers: [<name>]`, and it has been run on the full tier. Its report's "Promotion checks" read `candidate`, or the write-up says honestly why not.
+3. A write-up in `docs/experiments/NNN-<name>.md` covers the design, the calls per turn, the run id and the result. Null results count.
+4. The write-up ends with a `## Learnings` section, and [05-learnings.md](05-learnings.md) is updated to match ([how](05-learnings.md#how-the-record-works)). Before designing, read 05 for what we believe, how sure we are, and what has been tried.
+
+A person then takes it through the holdout, readings and league steps of the [promotion checklist](experiments/README.md#promotion-checklist).

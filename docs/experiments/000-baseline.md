@@ -2,7 +2,7 @@
 
 **Agent:** `baseline` (strategy prompt v2, `checks: limit+mentions`, `accept_words: reader`). **Reference for this
 measurement:** `o1-qwen` (plain O1). **Configs:** `backend/configs/gym/baseline.yaml`, `baseline-holdout.yaml`.
-Why the baseline is built this way: [05-learnings.md](../05-learnings.md).
+Why the baseline is built this way: [05-learnings.md](../05-learnings.md#the-current-reference-and-why).
 
 ## Dev bench (run_01a0f26323015d857a3b, standard-v1, 240 pairs)
 
@@ -46,3 +46,12 @@ over. Deals within own limit 73% vs 82%: **fails the deal check** by 9 points. B
 
 The baseline is clearly above plain O1 and O2, and level with boulware and the tough persona within noise (±0.07 on
 each mean). Boulware is still first by rating, as before the clean start.
+
+## Learnings
+
+Recorded on 2026-10-01, when the learnings record was introduced.
+
+- L1 strengthened: the dev gain over O1 is significant, but most of it doesn't carry over to the holdout.
+- L4 strengthened: boulware is first in the league again.
+- L6: the thinking exploiter and the 5-round cell are evidence pointing toward exploitable patterns (not significant).
+- L7 strengthened: 0 deals past the limit on dev and holdout, against 14 and 4 for plain O1.

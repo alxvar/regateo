@@ -36,7 +36,7 @@ agents/<architecture>/
 - **A config is named `<architecture>/v<N>/<name>`**, e.g. `single_call/v1/baseline`. Every setting that changes behaviour is a param. Validate params in `build` and raise `ValueError` on unknown values.
 - **Identity:** a version's code and prompts are one hash (its folder and its architecture's `lib/`, without configs and tests), and a config adds its model and params. Any change to code or prompts makes a different agent, so stored results never mix.
 - **Freezing:** a version with benchmark results is listed in `engine/configs/frozen.json`, and a test fails if it changes. A change to its code or prompts is a new version (copy it to `v<N+1>`); a new config under an existing version is fine.
-- **Imports:** a version imports only `agent_sdk`, the standard library, its own modules and its architecture's `lib/` (relative imports, `from ..lib import common`).
+- **Imports:** a version imports only `agent_sdk`, a short list of standard-library modules, pydantic, its own modules and its architecture's `lib/` (relative imports, `from ..lib import common`). The submission check (§5) enforces it.
 
 ## 3. Rules
 
@@ -95,7 +95,7 @@ A session building or changing an agent works on one architecture. What it sees 
 | Engine | The engine (`engine/`: opponents, referee, benches, arena), other architectures, all of docs/05 and `docs/experiments/`, the run database and LLM cache, and anything from a holdout run | People only |
 
 - **Why:** the engine tier is the exam. Designing against the opponents, the referee or the benches makes dev scores meaningless, and seeing other architectures makes ours converge on one idea.
-- **Imports:** agents can't import the engine at all: a test fails if any file under `agents/` does. What an agent needs from the engine's world is in `agent_sdk` (prices in text, the guards, the fake model for tests).
+- **The submission check** (`agent_sdk.check`): the engine checks an agent version's code before it ever builds it, and refuses it on any problem. The agent runs in the engine's process, next to its opponents, so isolation can't rest only on what a session was shown. The check allows imports of `agent_sdk`, a short standard-library list, pydantic and the agent's own architecture, and refuses file, network and process access (`open`, `os`, `subprocess`, path methods that read or list files), the tricks that get around a static check (`eval`, `exec`, `__import__`, dunder attributes, `getattr` with a computed name), and prompts read from anywhere but next to the code (`PromptDir(Path(__file__).parent / "prompts")`; the SDK also refuses a prompt folder outside the agent's architecture when it runs). Run it before handing a version back: `regateo-agent check agents/<architecture>/<version>`. What an agent needs from the engine's world is in `agent_sdk` (prices in text, the guards, the fake model for tests).
 - **Learnings between architectures** pass only through people: a lesson from one architecture's journal reaches others as a public entry in docs/05, and only if it follows from results, not from having read code ([05, "How the record works"](05-learnings.md#how-the-record-works)).
 - **Don't run:** the holdout or the league. A person runs them on the finished candidate.
 

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_sdk import AgentConfig, AgentContext, packages
+from agent_sdk.check import check_version
 from agent_sdk.prompts import PromptDir
 from pydantic import BaseModel, Field
 
@@ -174,6 +175,7 @@ def prompt_refs(spec: AgentSpec) -> list[str]:
 def build_agent(spec: AgentSpec, view: PrivateView, ctx: TrustedContext) -> Agent:
     if packages.is_version(spec.kind):
         _mount()
+        check_agent(spec.kind)
         module = packages.load(spec.kind)
         return module.build(AgentConfig(name=spec.label, model=spec.model, params=spec.params), view, ctx.public())
     builder = _lookup(_REGISTRY, spec.kind)
@@ -181,6 +183,21 @@ def build_agent(spec: AgentSpec, view: PrivateView, ctx: TrustedContext) -> Agen
         raise ValueError(f"unknown agent kind {spec.kind!r}; known: {sorted(_REGISTRY)}")
     kind = spec.kind if spec.kind in _REGISTRY else spec.kind.split(":", 1)[0] + ":"
     return builder(spec, view, ctx if kind in _TRUSTED else ctx.public())
+
+
+_CHECKED: set[str] = set()
+
+
+def check_agent(kind: str) -> None:
+    """The submission check (agent_sdk.check) on agent version `kind`, once per version of its code: an
+    agent that could reach outside itself is never built."""
+    _mount()
+    key = f"{kind}#{packages.code_hash(kind)}"
+    if key in _CHECKED:
+        return
+    if problems := check_version(packages.folder(kind)):
+        raise ValueError(f"agent {kind} fails the submission check:\n" + "\n".join(f"  {p}" for p in problems))
+    _CHECKED.add(key)
 
 
 def known_kinds() -> list[str]:

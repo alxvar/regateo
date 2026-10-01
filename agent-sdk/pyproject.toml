@@ -7,6 +7,9 @@ dependencies = [
     "pydantic>=2.13.5",
 ]
 
+[project.scripts]
+regateo-agent = "agent_sdk.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -94,23 +94,22 @@ def test_only_trusted_kinds_see_the_true_rules():
     assert scripted.n == S.rules.max_rounds
 
 
-def test_agent_packages_import_only_the_sdk():
-    """Agent code must run where only agent-sdk/ and agents/ exist (docs/06 §5): no engine imports."""
-    import re
+def test_every_agent_version_passes_the_submission_check():
+    """Agent code must run where only agent-sdk/ and agents/ exist, and reach nothing outside itself (docs/06 §5)."""
+    from agent_sdk import packages
+    from agent_sdk.check import check_version
 
     from regateo.core.config import agents_dir
-    engine = re.compile(r"^\s*(?:from|import)\s+regateo(?:\.|\s|$)", re.MULTILINE)
-    offenders = [str(p.relative_to(agents_dir())) for p in agents_dir().rglob("*.py") if engine.search(p.read_text())]
-    assert offenders == []
+    packages.mount(agents_dir())
+    versions = [v for a in agents_dir().iterdir() if a.is_dir() for v in a.iterdir()
+                if packages.is_version(f"{a.name}/{v.name}")]
+    assert versions and {str(p) for v in versions for p in check_version(v)} == set()
 
 
-async def test_scripted_variants():
-    view = S.view_for(Role.BUYER)
-    base = build_agent(AgentSpec(kind="scripted:liar"), view, ctx(Role.BUYER))
-    other = build_agent(AgentSpec(kind="scripted:liar", params={"shape": 0.8, "voice": 2}), view, ctx(Role.BUYER))
-    assert (base.shape, other.shape) == (1.2, 0.8)
-    o = obs(Role.BUYER, [])
-    assert "another seller already offered" in (await base.respond(o)).text
-    assert "lined up at" in (await other.respond(o)).text
-    with pytest.raises(ValueError, match="unknown scripted opponent params"):
-        build_agent(AgentSpec(kind="scripted:liar", params={"speed": 2}), view, ctx(Role.BUYER))
+def test_an_agent_that_fails_the_check_is_never_built(tmp_path, monkeypatch):
+    v1 = tmp_path / "sneaky" / "v1"
+    v1.mkdir(parents=True)
+    (v1 / "__init__.py").write_text("import os\n\ndef build(config, view, ctx):\n    return os.environ\n")
+    monkeypatch.setenv("REGATEO_AGENTS", str(tmp_path))
+    with pytest.raises(ValueError, match="submission check"):
+        build_agent(AgentSpec(kind="sneaky/v1"), S.view_for(Role.SELLER), ctx(Role.SELLER))

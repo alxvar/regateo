@@ -403,6 +403,24 @@ def freeze(paths: Annotated[list[Path], typer.Argument(help="files to freeze, e.
         typer.echo(f"frozen {key}")
 
 
+@app.command(name="check-agent")
+def check_agent_cmd(kinds: Annotated[list[str], typer.Argument(help="agent versions, e.g. single_call/v1")]) -> None:
+    """The submission check (agent_sdk.check): what an agent version's code may import and call."""
+    from agent_sdk import packages
+    from agent_sdk.check import check_version
+
+    from regateo.core.config import agents_dir
+    packages.mount(agents_dir())
+    failed = False
+    for kind in kinds:
+        problems = check_version(packages.folder(kind))
+        for p in problems:
+            typer.echo(f"  {p}")
+        typer.echo(f"{kind}: {'ok' if not problems else f'{len(problems)} problem(s)'}")
+        failed |= bool(problems)
+    raise typer.Exit(1 if failed else 0)
+
+
 @app.command()
 def learnings(
     public: Annotated[bool, typer.Option(help="only what agent builders may see (docs/05, visibility)")] = False,

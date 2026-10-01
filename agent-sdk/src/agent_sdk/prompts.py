@@ -18,6 +18,7 @@ from string import Template
 class PromptDir:
     def __init__(self, folder: str | Path):
         self.folder = Path(folder)
+        _check_inside_caller_architecture(self.folder)
 
     def path(self, ref: str) -> Path:
         """File for `name.vN` (or `name`, meaning v1)."""
@@ -41,6 +42,26 @@ class PromptDir:
     def fingerprint(self, ref: str) -> str:
         """Hash of the template text."""
         return hashlib.sha256(self.text(ref).encode()).hexdigest()[:12]
+
+
+def _check_inside_caller_architecture(folder: Path) -> None:
+    """An agent version may read only its own architecture's prompts. When the caller is an agent package
+    (under the mounted agents folder, agent_sdk.packages), the folder must be inside the caller's architecture."""
+    import sys
+
+    ns = sys.modules.get("regateo_agents")
+    if ns is None:
+        return
+    root = Path(ns.__path__[0]).resolve()
+    caller = Path(sys._getframe(2).f_globals.get("__file__") or "").resolve()
+    try:
+        arch = caller.relative_to(root).parts[0]
+    except (ValueError, IndexError):
+        return                                   # not called from an agent package
+    try:
+        folder.resolve().relative_to(root / arch)
+    except ValueError:
+        raise PermissionError(f"an agent of {arch!r} may only read prompts inside agents/{arch}/") from None
 
 
 @cache

@@ -1,0 +1,15 @@
+# The adversarial bench (docs/04-hill-climbing.md §4): opponents a person wrote after reading some of our
+# agents' code (registered with `informed_by`, regateo.agents.base.register). They are red-team tests:
+# useful for robustness, but unfair to the agents they were written against when comparing agents, so
+# only this bench may play them, never dev or the holdout. Results here are a gate a person reads, not a
+# score.
+#
+# Empty until the first such opponent exists: add it under `opponents`, then this bench can run.
+purpose: adversarial
+mode: benchmark
+opponents: []
+scenarios: {per_cell: 10, info_modes: [private], max_rounds: [6], deadline_known: [true, false]}
+protocol: freetext
+detector: text
+reader: shadow:llm-first-stable:qwen-local/qwen-local-think+rules-v2
+seed: 5

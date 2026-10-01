@@ -23,7 +23,7 @@ The gym already handles the measurement: agent identity covers every prompt and 
 
 ## 3. What we maximise
 
-**Primary metric:** Δshare against the reference. The tournament ranks teams by value captured, so this is the number that matters. Bradley-Terry ratings and win rates are diagnostics only.
+**Primary metric:** Δshare against the reference, on the bench's scored opponents. Since `standard-v2` those are the LLM opponents only: the scripted ones are gates (below), because gains against fixed scripts don't carry over to adaptive opponents (docs/05 L5). The tournament ranks teams by value captured, so this is the number that matters. Bradley-Terry ratings and win rates are diagnostics only.
 
 ### 3.1 Promotion rule
 
@@ -31,13 +31,14 @@ A challenger becomes the reference only if all of these hold:
 
 | Check | Where | Rule | Why |
 |---|---|---|---|
-| Gain on dev | `standard-v1`, full bench | Δshare > 0 with p < 0.05 (`stats/paired.py`) | Screens and halving cuts are for dropping losers, never for promoting |
-| Same direction on holdout | `holdout-v1` (§4) | Δshare > 0; it need not be significant on its own | A significant gain on dev plus a gain on unseen opponents is strong evidence. Requiring significance twice would reject most real gains (§6) |
-| Never past reservation | both benches | 0 deals past our walk-away price | Requirement M1. A hard gate, never averaged away |
+| Gain on dev | `standard-v2`, full bench, scored opponents | Δshare > 0 with p < 0.05 (`stats/paired.py`) | Screens and halving cuts are for dropping losers, never for promoting |
+| Same direction on holdout | `holdout-v2` (§4), scored opponents | Δshare > 0; it need not be significant on its own | A significant gain on dev plus a gain on unseen opponents is strong evidence. Requiring significance twice would reject most real gains (§6) |
+| Never past reservation | both benches, gates included | 0 deals past our walk-away price | Requirement M1. A hard gate, never averaged away |
+| Gates hold | both benches' gate opponents | Δshare against each gate opponent ≥ −0.10 | Each scripted opponent tests one weakness (holding firm, fake claims, injection). A candidate may not trade one away for gains elsewhere. 0.10 because each has only 40 pairs on dev (§6) |
 | Keeps closing deals | both benches, full runs | deals within its own limit ≥ reference's − 2 points | Otherwise it gains share by walking away, which scores 0 in a real match. A deal past the limit doesn't count: it already fails the gate above |
 | Deals are real | `regateo readings RUN` | no new class of misread acceptances or offers | It must win by negotiating, not by exploiting the referee's reader |
 
-**Warning, not a gate:** an opponent whose Δshare drops significantly (p < 0.05) or by more than 0.10. Each opponent has only 40 pairs on the full bench, so smaller drops are indistinguishable from chance (§6). A human reads the flagged transcripts and decides.
+**Warning, not a gate:** a scored opponent whose Δshare drops significantly (p < 0.05) or by more than 0.10. Each opponent has only 40 pairs on the full bench, so smaller drops are indistinguishable from chance (§6). A human reads the flagged transcripts and decides.
 
 **Code guardrails, not code strategy.** The baseline's vetoes are code, and stays code: it never decides what to offer or when to accept, only blocks a move that breaks an invariant, and a stronger opponent makes that more valuable, not less. What to offer and when to accept stays with the model. A coded strategy rule (e.g. "accept anything within the limit in the last round") is a fixed pattern a strong adaptive opponent can find and exploit, and our Qwen opponents wouldn't show it.
 
@@ -45,8 +46,10 @@ A challenger becomes the reference only if all of these hold:
 
 | Bench | Contents | Used for | How often |
 |---|---|---|---|
-| `standard-v1` (dev) | 3 scripted and 3 Qwen persona opponents, 10 scenarios per cell, 6 rounds, deadline known or hidden | Every round: successive halving on the full bench | Every round |
-| `holdout-v1` | New seed, items and price scale, 5 or 10 rounds; opponents dev never sees: an exploiter persona that looks for fixed patterns in our play (with and without thinking), a naive persona with thinking, O1 with the strategy prompt, and a fast-conceding boulware | Promotion candidates only | About once per promotion |
+| `standard-v2` (dev) | Scored: 3 Qwen persona opponents. Gates: 3 scripted opponents (hardliner, liar, injector). 20 scenarios per cell, 6 rounds, deadline known or hidden; the stable model reader | Every round: successive halving on the full bench | Every round |
+| `holdout-v2` | As holdout-v1 (new seed, items and price scale, 5 or 10 rounds; opponents dev never sees: an exploiter persona that looks for fixed patterns in our play, with and without thinking, a naive persona with thinking, O1 with the strategy prompt, and a fast-conceding boulware), plus gates: dev's scripted opponents with other concession curves and wording | Promotion candidates only | About once per promotion |
+| `adversarial-v1` | Opponents a person wrote after reading some of our agents' code (`informed_by`). Empty until the first exists. Never in dev or holdout: the gym refuses them there | Red-team checks a person reads | When a red-team opponent exists |
+| `standard-v1`, `holdout-v1` | The previous versions: all six dev opponents scored; the model reader with a random tag (never replayed from the cache) | Comparing with results from before 2026-10 | Retired |
 | `league` (arena round robin) | Every past champion, plus o1, o2, boulware and the strongest personas | After each promotion | Once per promotion |
 
 All opponents run on local Qwen or in code (§8).

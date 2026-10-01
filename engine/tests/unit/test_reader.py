@@ -218,3 +218,19 @@ async def test_confirming_reader_overrules_an_acceptance():
     think = FakeProvider([])
     await LLMFirstReader(offer, confirm=think).read([*h, msg(2, B, "$160?")])
     assert think.requests == []                             # only acceptances are re-read
+
+
+async def test_stable_tag_reads_the_same_transcript_the_same_way():
+    from regateo.referee import build_reader
+    h = [*read_all("$150", "$170"), msg(2, B, "Deal, $170.")]
+    replies = lambda req: verdict([170], "accept", 170)  # noqa: E731
+    stable, again, random_ = FakeProvider(replies), FakeProvider(replies), FakeProvider(replies)
+    await build_reader("llm-first-stable:p", lambda profile: stable).read(h)
+    await build_reader("llm-first-stable:p", lambda profile: again).read(h)
+    await build_reader("llm-first:p", lambda profile: random_).read(h)
+    await build_reader("llm-first:p", lambda profile: random_).read(h)
+    assert stable.requests[0].messages == again.requests[0].messages
+    assert random_.requests[0].messages != random_.requests[1].messages
+    other = FakeProvider(replies)
+    await build_reader("llm-first-stable:p", lambda profile: other).read([*h[:-1], msg(2, B, "Deal at $170.")])
+    assert other.requests[0].messages != stable.requests[0].messages

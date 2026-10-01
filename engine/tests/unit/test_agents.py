@@ -102,3 +102,15 @@ def test_agent_packages_import_only_the_sdk():
     engine = re.compile(r"^\s*(?:from|import)\s+regateo(?:\.|\s|$)", re.MULTILINE)
     offenders = [str(p.relative_to(agents_dir())) for p in agents_dir().rglob("*.py") if engine.search(p.read_text())]
     assert offenders == []
+
+
+async def test_scripted_variants():
+    view = S.view_for(Role.BUYER)
+    base = build_agent(AgentSpec(kind="scripted:liar"), view, ctx(Role.BUYER))
+    other = build_agent(AgentSpec(kind="scripted:liar", params={"shape": 0.8, "voice": 2}), view, ctx(Role.BUYER))
+    assert (base.shape, other.shape) == (1.2, 0.8)
+    o = obs(Role.BUYER, [])
+    assert "another seller already offered" in (await base.respond(o)).text
+    assert "lined up at" in (await other.respond(o)).text
+    with pytest.raises(ValueError, match="unknown scripted opponent params"):
+        build_agent(AgentSpec(kind="scripted:liar", params={"speed": 2}), view, ctx(Role.BUYER))

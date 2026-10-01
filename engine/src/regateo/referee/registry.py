@@ -29,7 +29,9 @@ def build_detector(name: str, judge_llm: JudgeFactory | None = None) -> DealDete
 
 def build_reader(name: str, llm: JudgeFactory | None = None) -> OfferReader:
     """`rules`, `rules-v2` (stricter about stale and restated prices), `llm:<profile>` (rules, and the model
-    for ambiguous messages), or
+    for ambiguous messages), `llm-first:<profile>[/<confirm profile>]` (the model reads every message),
+    `llm-first-stable:...` (the same, with the transcript tag a hash of the transcript instead of random, so
+    re-runs replay from the cache and read the same way), or
     `shadow:<primary>+<shadow>` (the first decides; the second is recorded on each reading)."""
     if name.startswith("shadow:"):
         primary, shadow = name.removeprefix("shadow:").split("+", 1)
@@ -38,11 +40,12 @@ def build_reader(name: str, llm: JudgeFactory | None = None) -> OfferReader:
         return RuleReader()
     if name == "rules-v2":
         return RuleReader(version=2)
-    if name.startswith("llm-first:"):
+    if name.startswith(("llm-first:", "llm-first-stable:")):
         if llm is None:
             raise ValueError("an llm reader needs an LLM factory")
-        first, _, confirm = name.removeprefix("llm-first:").partition("/")
-        return LLMFirstReader(llm(first), confirm=llm(confirm) if confirm else None)
+        stable = name.startswith("llm-first-stable:")
+        first, _, confirm = name.split(":", 1)[1].partition("/")
+        return LLMFirstReader(llm(first), confirm=llm(confirm) if confirm else None, stable_tag=stable)
     if name.startswith("llm:"):
         if llm is None:
             raise ValueError("an llm reader needs an LLM factory")

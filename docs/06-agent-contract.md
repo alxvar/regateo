@@ -102,7 +102,7 @@ A session building or changing an agent works on one architecture. What it sees 
 ## 6. Done
 
 1. `uv run pytest` passes from the repo root, including the version's own tests (`agents/<architecture>/v<N>/tests/`, on `agent_sdk.testing`, no GPU).
-2. A gym config with `bench: standard-v1`, `reference: single_call/v1/baseline` and the new configs as challengers has been run on the full tier. Its report's "Promotion checks" read `candidate`, or the journal says honestly why not.
+2. A gym config with `bench: standard-v2`, `reference: single_call/v1/baseline` and the new configs as challengers has been run on the full tier. Its report's "Promotion checks" read `candidate`, or the journal says honestly why not.
 3. **The architecture's `JOURNAL.md` has a new entry:** the version and configs, the hypothesis, what changed, the calls per turn, the run id, the result, and what it says. Null results count. Before designing, read the journal and the public learnings for what was tried and how sure we are.
 
 A person then reviews the journal entry, promotes what holds beyond the architecture into docs/05, and takes the best candidate through the holdout, readings and league steps of the [promotion checklist](experiments/README.md#promotion-checklist).

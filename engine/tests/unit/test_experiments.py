@@ -70,3 +70,46 @@ async def test_arena_end_to_end(tmp_path):
 def test_arena_labels_unique():
     with pytest.raises(ValueError):
         ArenaSpec.model_validate({"name": "t", "roster": ["boulware", "boulware"]})
+
+
+async def test_gates_are_played_but_not_scored(tmp_path):
+    spec = gym("benchmark", opponents=["scripted:hardliner"], gates=["scripted:pushover"],
+               early_stop={"min_pairs": 4, "every": 4})
+    jobs = spec.jobs()
+    assert sum(bool(j.meta.get("gate")) for j in jobs) == len(jobs) // 2
+    store = await Store.open(tmp_path / "db")
+    run_id, summary = await run_gym(spec, store)
+    assert summary.done == summary.total == 96
+    r = await build_gym_report(store, run_id)
+    assert r.diff.n == 24 and {b.key for b in r.by_opponent} == {"scripted:hardliner"}
+    assert [b.key for b in r.by_gate] == ["scripted:pushover"]
+    c = r.challengers[0]
+    assert [b.key for b in c.gates] == ["scripted:pushover"] and c.gates[0].diff.n == 24
+    assert [k.name for k in c.checks] == ["gain", "limit", "deals", "opponents", "gates"]
+
+
+def test_gate_check_fails_on_a_drop():
+    from regateo.gym.report import Breakdown, ChallengerStats, promotion_checks
+    from regateo.stats import mean_ci, paired_test
+    side = {"label": "x", "matches": 4, "mean_share": mean_ci([0.5] * 4), "deal_rate": mean_ci([1.0] * 4),
+            "past_reservation": 0, "errors": 0}
+    gate = Breakdown(key="scripted:liar", a=mean_ci([0.2] * 4), b=mean_ci([0.4] * 4),
+                     diff=paired_test([-0.2, -0.2, -0.2, -0.2]))
+    c = ChallengerStats(subject="a", side=side, reference=side, diff=paired_test([0.1, 0.2, 0.1, 0.2]), gates=[gate])
+    checks = {k.name: k for k in promotion_checks(c, purpose="dev", tier=None)}
+    assert checks["gates"].status == "fail" and "scripted:liar" in checks["gates"].detail
+    c.gate_past_reservation = 1
+    assert {k.name: k for k in promotion_checks(c, purpose="dev", tier=None)}["limit"].status == "fail"
+
+
+def test_informed_opponents_only_on_adversarial_benches():
+    from regateo.agents import register
+    from regateo.opponents.scripted import build_scripted
+
+    register("redteam:", trusted=True, informed_by=("single_call/v1",))(
+        lambda spec, view, ctx: build_scripted(spec.model_copy(update={"kind": "scripted:hardliner"}), view, ctx))
+    with pytest.raises(ValueError, match="adversarial"):
+        gym("benchmark", opponents=["redteam:x"]).jobs()
+    with pytest.raises(ValueError, match="adversarial"):
+        gym("benchmark", opponents=["scripted:liar"], gates=["redteam:x"]).jobs()
+    assert gym("benchmark", opponents=["redteam:x"], purpose="adversarial").jobs()

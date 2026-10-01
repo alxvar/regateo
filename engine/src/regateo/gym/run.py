@@ -27,7 +27,7 @@ async def run_gym(spec: GymSpec, store: Store, *, resume: str | None = None,
     if spec.early_stop and spec.mode == "benchmark":
         stopper = EarlyStopper(spec.early_stop, [s for s in spec.subjects() if s != "b"])
         for row in await store.list_matches(run_id):          # on resume: what was already played counts
-            if row.status == "done" and row.outcome:
+            if row.status == "done" and row.outcome and not row.meta.get("gate"):
                 stopper.add(row.meta["pair"], row.meta["subject"], row.outcome.share(Role(row.meta["role"])))
     skip, on_result = (stopper.skip, stopper.record) if stopper else (None, None)
     if spec.halving and spec.mode == "benchmark":
@@ -77,7 +77,7 @@ async def _gains(store: Store, run_id: str, pairs: set[str]) -> dict[str, float]
     """Mean challenger - reference share per challenger, over the given pairs that both finished."""
     shares: dict[str, dict[str, float]] = defaultdict(dict)
     for r in await store.list_matches(run_id):
-        if r.status == "done" and r.outcome and r.meta["pair"] in pairs:
+        if r.status == "done" and r.outcome and r.meta["pair"] in pairs and not r.meta.get("gate"):
             shares[r.meta["pair"]][r.meta["subject"]] = r.outcome.share(Role(r.meta["role"]))
     diffs: dict[str, list[float]] = defaultdict(list)
     for got in shares.values():

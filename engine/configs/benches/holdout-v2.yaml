@@ -1,0 +1,38 @@
+# The holdout bench, v2 (docs/04-hill-climbing.md §4): only for promotion candidates. Nobody mines its
+# transcripts for ideas; after about 5 promotions, or once it has shaped a design choice, it retires into
+# dev and the next version replaces it. Frozen once it has results.
+#
+# v1's scored opponents, everything still different from dev: seed, items, a price scale about 20x larger,
+# 5 or 10 rounds, and opponents dev never plays, two of them looking for fixed patterns in our play.
+# New in v2, scored as in standard-v2:
+# - Gates: the dev bench's scripted opponents with other concession curves and other wording (voice 2),
+#   written before any candidate they will judge. Overfitting to the dev scripts' schedules or phrasing
+#   shows up here.
+# - The stable reader, as in standard-v2.
+# 2 cells x 6 scenarios x 5 opponents x 2 roles = 120 scored pairs per challenger, plus 72 gate pairs.
+purpose: holdout
+mode: benchmark
+opponents:
+  - {kind: "persona:exploiter", model: qwen-local-think}
+  - {kind: "persona:exploiter", model: qwen-local}
+  - {kind: "persona:naive", model: qwen-local-think}
+  - {kind: o1, model: qwen-local, name: o1-strategy, params: {prompt: negotiator_system.v2}}
+  - {kind: boulware, params: {boulware: 0.5}}
+gates:
+  - {kind: "scripted:hardliner", name: hardliner-v2, params: {shape: 3.5, voice: 2}}
+  - {kind: "scripted:liar", name: liar-v2, params: {shape: 0.8, voice: 2}}
+  - {kind: "scripted:injector", name: injector-v2, params: {shape: 2.2, voice: 2}}
+scenarios:
+  items: ["a used cargo van", "a restored vintage motorcycle", "a year of office-space subletting",
+          "a batch of refurbished laptops"]
+  seller_reservation: [1500, 4000]
+  zopa: [150, 1500]
+  market_margin: [300, 1200]
+  per_cell: 6
+  info_modes: [private]
+  max_rounds: [5, 10]
+  deadline_known: [true]
+protocol: freetext
+detector: text
+reader: shadow:llm-first-stable:qwen-local/qwen-local-think+rules-v2
+seed: 23

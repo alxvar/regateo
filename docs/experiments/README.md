@@ -2,7 +2,9 @@
 
 One file per question: `NNN-<question>.md`. Null results count: they stop us from testing the same idea twice.
 
-**Current reference:** `single_call/v1/baseline` on bench `standard-v1`, set up 2026-09-30 from the experiments before it.
+**Current reference:** `single_call/v1/baseline`, set up 2026-09-30 from the experiments before it. Measured on
+`standard-v1` and `holdout-v1`; it still has to be measured on `standard-v2` and `holdout-v2` (`regateo gym baseline-v2`,
+`regateo gym baseline-holdout-v2`), the benches every new experiment uses.
 What we believe across all experiments, and why the baseline is built as it is: [05-learnings.md](../05-learnings.md).
 
 ## How to run a variant
@@ -20,7 +22,7 @@ What we believe across all experiments, and why the baseline is built as it is: 
 3. **Point a gym config at a bench**, with the reference and any number of challengers:
    ```yaml
    name: exp-001-...
-   bench: standard-v1
+   bench: standard-v2
    reference: single_call/v1/baseline
    challengers: [single_call/v1/firmer-close, single_call/v2/think-first]
    halving: true           # cut the worse half at 48, 96... pairs until two are left
@@ -44,9 +46,9 @@ What we believe across all experiments, and why the baseline is built as it is: 
 The rule and its reasons are in [04-hill-climbing.md §3.1](../04-hill-climbing.md). For the best candidate:
 
 1. **Dev, full tier.** In the gym report's "Promotion checks", the candidate reads `candidate`: gain significant,
-   no deals past its own limit, deals within its own limit no more than 2 points below the reference's. Read any
-   `warn` rows' transcripts.
-2. **Holdout.** Run it on `holdout-v1` against the reference (a gym config with `bench: holdout-v1`). Its gain must
+   no deals past its own limit (gates included), deals within its own limit no more than 2 points below the
+   reference's, and no drop over 0.10 against any gate opponent. Read any `warn` rows' transcripts.
+2. **Holdout.** Run it on `holdout-v2` against the reference (a gym config with `bench: holdout-v2`). Its gain must
    point the same way. Don't read holdout transcripts for ideas.
 3. **Readings.** `regateo readings <dev run>`: no new kind of misread offer or acceptance behind its gains.
 4. **Promote.** `regateo freeze` its prompt and config, update "Current reference" above, add it to the roster in

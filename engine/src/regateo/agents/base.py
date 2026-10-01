@@ -127,13 +127,16 @@ _REGISTRY: dict[str, Builder] = {}
 _PROMPTS: dict[str, PromptRefs] = {}
 _PROMPT_DIRS: dict[str, PromptDir] = {}
 _TRUSTED: set[str] = set()
+_INFORMED: dict[str, tuple[str, ...]] = {}
 
 
 def register(kind: str, prompts: PromptRefs | None = None, prompt_dir: PromptDir | None = None,
-             trusted: bool = False) -> Callable[[Builder], Builder]:
+             trusted: bool = False, informed_by: tuple[str, ...] = ()) -> Callable[[Builder], Builder]:
     """Register one of the engine's own kinds. A kind ending in ':' handles every `kind<variant>`.
     `prompts` lists the prompt files (in `prompt_dir`) a spec of this kind will use, for its identity.
-    `trusted` gives its agents the whole `TrustedContext`; only the scripted opponents need it."""
+    `trusted` gives its agents the whole `TrustedContext`; only the scripted opponents need it.
+    `informed_by`: for an opponent a person wrote after reading some of our agents, which ones (e.g.
+    ("single_call/v1",)). Such an opponent may only play on an adversarial bench (gym.spec.check_opponents)."""
     if packages.is_version(kind):
         raise ValueError(f"{kind!r} looks like an agent version; those live under agents/, not in the registry")
     if prompts and prompt_dir is None:
@@ -146,6 +149,8 @@ def register(kind: str, prompts: PromptRefs | None = None, prompt_dir: PromptDir
             _PROMPT_DIRS[kind] = prompt_dir
         if trusted:
             _TRUSTED.add(kind)
+        if informed_by:
+            _INFORMED[kind] = tuple(informed_by)
         return fn
     return deco
 
@@ -154,6 +159,11 @@ def _lookup(table: dict[str, Any], kind: str) -> Any:
     if kind in table:
         return table[kind]
     return table.get(kind.split(":", 1)[0] + ":") if ":" in kind else None
+
+
+def informed_by(kind: str) -> tuple[str, ...]:
+    """The agents whose code a registered opponent was written against; empty for blind ones."""
+    return _lookup(_INFORMED, kind) or ()
 
 
 def prompt_refs(spec: AgentSpec) -> list[str]:

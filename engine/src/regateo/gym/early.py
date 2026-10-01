@@ -52,6 +52,8 @@ class EarlyStopper:
         return subject in self.stopped
 
     def record(self, job: MatchJob, outcome: Outcome) -> None:
+        if job.meta.get("gate"):
+            return                                     # gates aren't scored, so they don't stop anyone
         self.add(job.meta["pair"], job.meta["subject"], outcome.share(Role(job.meta["role"])))
 
     def add(self, pair: str, subject: str, share: float) -> None:

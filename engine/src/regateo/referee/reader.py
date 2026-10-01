@@ -10,6 +10,7 @@ an amount the message actually names, so a planted instruction can't invent a pr
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import secrets
 from abc import ABC, abstractmethod
@@ -264,9 +265,10 @@ class LLMReader(OfferReader):
 
     name = "llm"
 
-    def __init__(self, client: LLMClient, window: int = 6):
+    def __init__(self, client: LLMClient, window: int = 6, stable_tag: bool = False):
         self.client = client
         self.window = window
+        self.stable_tag = stable_tag
 
     system = _SYSTEM
     max_tokens: int | None = 256
@@ -287,8 +289,13 @@ class LLMReader(OfferReader):
                                             _has(rules.candidates, standing) else [])
         if not rules.candidates:
             choices = []
-        tag = f"transcript_{secrets.token_hex(4)}"
         lines = [f"[{h.idx}] {h.sender.value}: {h.text}" for h in history[-self.window:]]
+        # The tag fences the transcript, so a negotiator can't close it early and write instructions after it.
+        # Random, it can't be guessed, but every request is new and is never replayed from the cache. Stable,
+        # it is a hash of the transcript it fences: a negotiator can't predict it either, since it depends on
+        # the very message that would have to contain it, and the same transcript is read the same way.
+        token = hashlib.sha256("\n".join(lines).encode()).hexdigest()[:8] if self.stable_tag else secrets.token_hex(4)
+        tag = f"transcript_{token}"
         prompt = (
             f"<{tag}>\n" + "\n".join(lines) + f"\n</{tag}>\n\n"
             f"Message [{m.idx}] is from the {m.sender.value}. "
@@ -358,9 +365,9 @@ class LLMFirstReader(LLMReader):
     system = _SYSTEM_V2
     max_tokens = None            # the profile's: a thinking model spends most of it before answering
 
-    def __init__(self, client: LLMClient, window: int = 6, confirm: LLMClient | None = None):
-        super().__init__(client, window)
-        self.confirmer = LLMFirstReader(confirm, window) if confirm is not None else None
+    def __init__(self, client: LLMClient, window: int = 6, confirm: LLMClient | None = None, stable_tag: bool = False):
+        super().__init__(client, window, stable_tag)
+        self.confirmer = LLMFirstReader(confirm, window, stable_tag=stable_tag) if confirm is not None else None
 
     async def read(self, history: Sequence[Message]) -> Reading:
         rules = rule_reading(history[-1], history[:-1], version=2)

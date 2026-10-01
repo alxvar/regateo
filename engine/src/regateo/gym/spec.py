@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from regateo.agents.base import AgentSpec
+from regateo.agents.base import AgentSpec, informed_by
 from regateo.core.config import configs_dir, load_yaml_dict
 from regateo.core.ids import derive_seed
 from regateo.core.roles import Role
@@ -15,8 +15,8 @@ from regateo.runner.specs import ExperimentSpec, cell_of, resolve_agent
 
 # What a bench fixes. A gym that names a bench may not set these itself: results on one bench
 # stay comparable across experiments, and changing any of them means a new bench version.
-BENCH_FIELDS = ("mode", "opponents", "roles", "scenarios", "protocol", "detector", "reader", "seed", "sim_clock",
-                "tiers", "purpose")
+BENCH_FIELDS = ("mode", "opponents", "gates", "roles", "scenarios", "protocol", "detector", "reader", "seed",
+                "sim_clock", "tiers", "purpose")
 
 
 def load_bench(name: str) -> dict[str, Any]:
@@ -24,6 +24,17 @@ def load_bench(name: str) -> dict[str, Any]:
     if not path.exists():
         raise ValueError(f"no bench {name!r} (configs/benches/{name}.yaml)")
     return load_yaml_dict(path)
+
+
+def check_opponents(opponents: list[AgentSpec], purpose: str) -> None:
+    """Opponents a person wrote after reading one of our agents (`informed_by`) score that agent unfairly
+    against its rivals: they belong in an adversarial bench only, never in dev or the holdout (docs/04 §4)."""
+    if purpose == "adversarial":
+        return
+    informed = [o.label for o in opponents if informed_by(o.kind)]
+    if informed:
+        raise ValueError(f"{informed} were written against our agents (informed_by); only an adversarial bench "
+                         "may play them")
 
 
 class GymSpec(ExperimentSpec):
@@ -41,11 +52,13 @@ class GymSpec(ExperimentSpec):
     b: AgentSpec
     extra: list[AgentSpec] = Field(default_factory=list)   # benchmark only: more challengers, like A
     opponents: list[AgentSpec] = Field(default_factory=list)
+    gates: list[AgentSpec] = Field(default_factory=list)   # benchmark only: played like opponents, but not
+                                                           # scored; each is a promotion gate (gym.report)
     roles: list[Role] = Field(default_factory=lambda: [Role.SELLER, Role.BUYER])   # benchmark only
     bench: str | None = None
     tier: str | None = None
     tiers: dict[str, int] = Field(default_factory=dict)     # tier name -> scenarios per cell
-    purpose: Literal["dev", "holdout"] = "dev"               # set by the bench; decides the promotion checks
+    purpose: Literal["dev", "holdout", "adversarial"] = "dev"  # set by the bench; decides the promotion checks
     early_stop: EarlyStop | None = None                       # benchmark only: stop clear losers (gym.early)
     halving: Halving | None = None                            # benchmark only: successive halving (gym.early)
     source_run: str | None = None                             # the run this one continues, e.g. a climb screen
@@ -88,7 +101,7 @@ class GymSpec(ExperimentSpec):
     def _agent(cls, v: Any) -> AgentSpec:
         return resolve_agent(v)
 
-    @field_validator("extra", "opponents", mode="before")
+    @field_validator("extra", "opponents", "gates", mode="before")
     @classmethod
     def _agents(cls, v: Any) -> list[AgentSpec]:
         return [resolve_agent(x) for x in v]
@@ -111,6 +124,9 @@ class GymSpec(ExperimentSpec):
             raise ValueError("two subjects have the same agent configuration")
         if self.mode == "benchmark" and not self.opponents:
             raise ValueError("benchmark mode needs opponents")
+        if self.gates and self.mode != "benchmark":
+            raise ValueError("gates need benchmark mode")
+        check_opponents([*self.opponents, *self.gates], self.purpose)
         if self.mode == "duel" and self.extra:
             raise ValueError("extra challengers need benchmark mode")
         cap = self.per_cell_cap()
@@ -134,7 +150,8 @@ class GymSpec(ExperimentSpec):
                                          seed=seed, meta={"mode": "duel", "pair": str(i), "a_role": a_role.value,
                                                           "cell": cell}, **common))
                 continue
-            for k, opp in enumerate(self.opponents):
+            for k, opp in enumerate([*self.opponents, *self.gates]):
+                gate = k >= len(self.opponents)
                 for role in self.roles:
                     seed = derive_seed(self.seed, i, k, role.value)
                     pair = f"{i}-{k}-{role.value[0]}"
@@ -143,6 +160,7 @@ class GymSpec(ExperimentSpec):
                         jobs.append(MatchJob(key=f"{pair}-{subject}", scenario=s, seller=seller, buyer=buyer,
                                              seed=seed, couple=role if self.coupled else None,
                                              meta={"mode": "benchmark", "pair": pair, "subject": subject,
-                                                   "role": role.value, "opponent": opp.label, "cell": cell},
+                                                   "role": role.value, "opponent": opp.label, "cell": cell,
+                                                   **({"gate": True} if gate else {})},
                                              **common))
         return jobs

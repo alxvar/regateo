@@ -1,0 +1,29 @@
+# The dev bench, v2: what every challenger is measured on, and the only bench a proposer may learn from.
+# Frozen once it has results: to change opponents, scenarios, rules or the reader, add standard-v3.
+#
+# What changed from v1 (docs/04-hill-climbing.md §3.1, §4):
+# - Only the LLM opponents are scored. Gains against fixed scripts don't carry over to adaptive opponents
+#   (docs/05 L5), so the scripted ones are gates: a challenger may not drop by more than 0.10 against any
+#   of them, nor make a deal past its limit.
+# - Twice the scenarios, so the scored part alone is as large as all of v1: 3 LLM opponents x 2 cells x
+#   20 scenarios x 2 roles = 240 scored pairs per challenger, plus 240 gate pairs.
+# - A new seed: new scenarios, none of them seen in v1 transcripts.
+# - The reader's transcript tag is a hash of the transcript, not random (llm-first-stable): re-runs replay
+#   reader calls from the cache and read every message the same way.
+# screen: the first 4 scenarios per cell, 48 scored pairs.
+mode: benchmark
+opponents:
+  - {kind: "persona:tough", model: qwen-local}
+  - {kind: "persona:manipulator", model: qwen-local}
+  - {kind: "persona:injector", model: qwen-local}
+gates:
+  - scripted:hardliner
+  - scripted:liar
+  - scripted:injector
+scenarios: {per_cell: 20, info_modes: [private], max_rounds: [6], deadline_known: [true, false]}
+tiers: {screen: 4}
+protocol: freetext
+detector: text
+# Qwen reads every message, Qwen with thinking re-reads each acceptance; the rules are logged alongside.
+reader: shadow:llm-first-stable:qwen-local/qwen-local-think+rules-v2
+seed: 3

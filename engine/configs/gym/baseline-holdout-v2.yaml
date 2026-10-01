@@ -1,0 +1,6 @@
+# The baseline on the holdout bench v2, against plain O1.
+name: baseline-holdout-v2
+bench: holdout-v2
+reference: single_call/v1/o1-qwen
+challengers: [single_call/v1/baseline]
+settings: {concurrency: 32, cache: readwrite}

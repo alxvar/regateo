@@ -252,7 +252,7 @@ def propose(
     subject: str = "b",
     n: Annotated[int, typer.Option(help="challengers to ask for")] = 6,
     proposer: Annotated[str, typer.Option(help="model profile that proposes")] = "qwen-local-propose",
-    bench: str = "standard-v1",
+    bench: str = "standard-v2",
     db: DbOpt = None,
 ) -> None:
     """Ask a local model for challengers from a run's failures; write their configs and a gym."""
@@ -296,7 +296,7 @@ def workspace(
 def adopt(
     folder: Annotated[Path, typer.Argument(help="a workspace from `regateo workspace`, with candidates written")],
     reference: Annotated[str | None, typer.Option(help="reference to beat (default: the parent)")] = None,
-    bench: str = "standard-v1",
+    bench: str = "standard-v2",
     db: DbOpt = None,
 ) -> None:
     """Validate a workspace's candidates; write their configs and a gym (successive halving)."""
@@ -329,7 +329,7 @@ def climb(
     rounds: int = 1,
     n: int = 6,
     proposer: str = "qwen-local-propose",
-    bench: str = "standard-v1",
+    bench: str = "standard-v2",
     db: DbOpt = None,
 ) -> None:
     """Unattended rounds: mine, propose, successive halving on the full bench. Promotion stays manual."""

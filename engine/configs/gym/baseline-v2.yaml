@@ -1,0 +1,6 @@
+# The baseline on the dev bench v2, against plain O1, so v2 has a reference point (docs/experiments/000).
+name: baseline-v2
+bench: standard-v2
+reference: single_call/v1/o1-qwen
+challengers: [single_call/v1/baseline]
+settings: {concurrency: 32, cache: readwrite}

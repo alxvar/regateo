@@ -53,6 +53,8 @@ def gym_report(r: GymReport) -> str:
             lines.append(f"  {c.subject:4} {c.side.label[:28]:28} {est(c.side.mean_share):>24} "
                          f"{est(c.side.deal_rate, True):>24}  {cols}  {d.n:4d}")
     lines += _table("By opponent", r.by_opponent) + _table("By role", r.by_role) + _table("By cell", r.by_cell)
+    if r.by_gate:
+        lines += _table("Gates (not scored)", r.by_gate)
     lines.append(f"\nCost ${r.cost_usd:.4f}  tokens in {r.input_tokens:,} / out {r.output_tokens:,}")
     lines += _checks(r)
     return "\n".join(lines)

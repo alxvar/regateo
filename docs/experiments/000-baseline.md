@@ -47,6 +47,25 @@ over. Deals within own limit 73% vs 82%: **fails the deal check** by 9 points. B
 The baseline is clearly above plain O1 and O2, and level with boulware and the tough persona within noise (±0.07 on
 each mean). Boulware is still first by rating, as before the clean start.
 
+## Re-run as an agent package (2026-10-01)
+
+When agents became packages, the baseline became `single_call/v1/baseline` and plain O1 `single_call/v1/o1-qwen`.
+Their identity changed (it now hashes their code), but every model request they make is byte for byte the same, so
+all three measurements were run again under the new names.
+
+| Run | Before | After |
+|---|---|---|
+| Dev (run_01a0f788e0c49683e4d1) | baseline 0.341, O1 0.224, Δ +0.117 (p < 0.0001) | baseline 0.343, O1 0.227, Δ +0.115 (p < 0.0001) |
+| Holdout (run_01a0f795b19a94d08332) | baseline 0.503, O1 0.470, Δ +0.033 (p = 0.49) | baseline 0.518, O1 0.469, Δ +0.049 (p = 0.30) |
+| League (run_01a0f79f52a116144391) | 3rd of 5: boulware 1610, tough-qwen 1606, baseline 1546 | 3rd of 5: boulware 1614, tough-qwen 1599, baseline 1568 |
+
+On dev, 475 of 480 matches ended exactly as before, and on the holdout 236 of 240. The rest diverge where the
+original run had a model error (output truncated at max_tokens, which isn't cached, so the re-run asked again), or
+where the referee's model reader read a message differently: its requests carry a random tag, so they are never
+replayed from the cache. The league is not paired, so its matches were played afresh. Nothing changes in what this
+experiment says. On dev the deal check now just fails (68% against 70% within own limit, before 68% against 69%),
+which comes from those few matches, not from the agent.
+
 ## Learnings
 
 Recorded on 2026-10-01, when the learnings record was introduced.

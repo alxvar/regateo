@@ -1,0 +1,33 @@
+[project]
+name = "regateo-agent-sdk"
+version = "0.1.0"
+description = "What a negotiating agent is written against: the interface, its inputs and outputs, and model access"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.13.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_sdk"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]

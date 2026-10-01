@@ -9,20 +9,22 @@ The evaluation stack is in place. The agents available so far are two LLM baseli
 ## Quick start
 
 ```bash
-cd backend && uv sync
+uv sync --all-packages                    # from the repo root: the engine and the agent SDK
+cd engine
 uv run regateo gym smoke-offline          # ~2k offline matches in seconds, then a report
 uv run regateo arena offline              # offline round robin
 uv run regateo serve                      # API + UI on http://localhost:8000 (after building the UI)
 cd ../ui && npm install && npm run build  # or `npm run dev` for hot reload on :5173
 ```
 
-LLM runs use model profiles in `backend/configs/models/`. For local Qwen (Qwen3.8-27B NVFP4 on the RTX 5090), install vLLM once in its own venv (`uv venv ~/venvs/vllm --python 3.12 && VIRTUAL_ENV=~/venvs/vllm uv pip install vllm --torch-backend=auto`), start it with `backend/scripts/serve_qwen_vllm.sh` (port 8001; the dashboard keeps 8000), then try `uv run regateo gym o2-vs-o1-duel`. Runs resume with `--resume <run_id>` and stop at `--budget <usd>`.
+LLM runs use model profiles in `engine/configs/models/`. For local Qwen (Qwen3.8-27B NVFP4 on the RTX 5090), install vLLM once in its own venv (`uv venv ~/venvs/vllm --python 3.12 && VIRTUAL_ENV=~/venvs/vllm uv pip install vllm --torch-backend=auto`), start it with `engine/scripts/serve_qwen_vllm.sh` (port 8001; the dashboard keeps 8000), then try `uv run regateo gym o2-vs-o1-duel`. Runs resume with `--resume <run_id>` and stop at `--budget <usd>`.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
-| `backend/` | Python (uv project `regateo`): agents, model providers, match engine, gym, arena, stats, storage, API. Configs under `backend/configs/`. |
+| `engine/` | Python (uv project `regateo`): agents, model providers, match engine, referee, gym, arena, climb, stats, storage, CLI, API. Configs under `engine/configs/`. |
+| `agent-sdk/` | Python (uv project `regateo-agent-sdk`, package `agent_sdk`): what agents are written against, and all an agent may import from the engine's world. See [06](docs/06-agent-contract.md). |
 | `ui/` | React + Vite dashboard for conversations and gym/arena stats. See its [README](ui/README.md). |
 | `data/` | Gitignored run output: SQLite DB, transcripts, LLM cache. |
 | `docs/` | Design documents for the new architecture. |
@@ -35,7 +37,7 @@ LLM runs use model profiles in `backend/configs/models/`. For local Qwen (Qwen3.
 - **arena:** a tournament across a roster of agents, producing a leaderboard and ratings.
 - **reading:** the referee's interpretation of one message (offer, accept, reject or none, and the price), made once when the message arrives. Rules decide the clear cases; `reader: llm:<profile>` asks a model for the ambiguous ones, choosing only among amounts the message names. `shadow:rules+llm:<profile>` records the model's view without letting it decide. `regateo readings RUN_ID [--reread <reader>]` scores readings against what each agent meant to say.
 
-Model access goes through `regateo.llm`: the Claude API for real runs, or a local model served with vLLM behind an OpenAI-compatible endpoint (see `backend/.env.example`).
+Model access goes through `regateo.llm`: the Claude API for real runs, or a local model served with vLLM behind an OpenAI-compatible endpoint (see `engine/.env.example`).
 
 ## Legacy
 

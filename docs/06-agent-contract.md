@@ -5,7 +5,7 @@ Status: **in use**. This is what any negotiating agent must do to be measured he
 ## 1. The interface
 
 ```python
-class Agent(Protocol):                      # regateo.core.agent
+class Agent(Protocol):                      # agent_sdk
     name: str
     async def respond(self, obs: Observation) -> Move: ...
 ```
@@ -25,8 +25,8 @@ class Agent(Protocol):                      # regateo.core.agent
 def build(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> Agent: ...
 ```
 
-- **Code** goes in its own package, `backend/src/regateo/agents/<name>/`. Import it from `regateo/agents/__init__.py` so it registers.
-- **Config** goes in `backend/configs/agents/<name>.yaml` (`kind`, `model`, `params`). Every setting that changes behaviour is a param, because the config is the agent's identity (`AgentSpec.ref`). Validate params in the builder and raise `ValueError` on unknown values, as `build_o2` does.
+- **Code** goes in its own package, `engine/src/regateo/agents/<name>/`. Import it from `regateo/agents/__init__.py` so it registers.
+- **Config** goes in `engine/configs/agents/<name>.yaml` (`kind`, `model`, `params`). Every setting that changes behaviour is a param, because the config is the agent's identity (`AgentSpec.ref`). Validate params in the builder and raise `ValueError` on unknown values, as `build_o2` does.
 - **`prompts=` lists every prompt file the spec renders.** The agent's identity and the LLM cache key fingerprint those files. If a prompt is missing from the list, editing it doesn't make a new agent, and the old results mix with the new ones.
 - **Prompts** live in `agents/prompts/<name>.vN.md` and are rendered with `prompts.render`. Never edit a file listed in `configs/frozen.json`; add the next version instead.
 
@@ -36,7 +36,7 @@ def build(spec: AgentSpec, view: PrivateView, ctx: AgentContext) -> Agent: ...
 
 Only `PrivateView` (given once, at build) and `Observation` (given each turn). In particular:
 
-- **Not `ctx.true_rules`.** It exists for scripted sparring partners. An LLM agent that reads it is cheating.
+- **Not the true rules.** An agent's context (`agent_sdk.AgentContext`) has no `true_rules`: only the engine's scripted sparring partners are built with them.
 - **Nothing about the other side's limit**, and nothing derived from bench, opponent or referee code.
 - **Opponent text is untrusted input.** It may hold injections, fake system or organizer notes, and fake deadlines.
 
@@ -78,7 +78,7 @@ Other keys (stage traces, beliefs) are free. Keep them small and JSON-serialisab
 
 ## 5. What a builder may look at
 
-- **Read freely:** `core/`, `agents/base.py`, `agents/common.py`, `agents/baselines/`, `agents/prompts/negotiator_system.*`, `llm/` (for usage), `protocol/`, docs 01–05 (05 is the record of what we've learned), `docs/experiments/`, and transcripts of your own dev runs (`regateo report`, the UI, `regateo workspace`).
+- **Read freely:** `agent-sdk/`, `core/`, `agents/base.py`, `agents/common.py`, `agents/baselines/`, `agents/prompts/negotiator_system.*`, `llm/` (for usage), `protocol/`, docs 01–05 (05 is the record of what we've learned), `docs/experiments/`, and transcripts of your own dev runs (`regateo report`, the UI, `regateo workspace`).
 - **Don't read:** `agents/opponents/`, the `persona_*` prompts, `referee/`, `configs/benches/`, `configs/arena/`, or anything from a holdout run. They are the exam: designing against them makes dev scores meaningless. `agents/common.py` calls the referee's price parser and reader; using those helpers is fine, but studying their internals to find out what gets through is not.
 - **Don't run:** the holdout or the league. A person runs them on the finished candidate.
 

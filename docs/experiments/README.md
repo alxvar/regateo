@@ -8,9 +8,9 @@ What we believe across all experiments, and why the baseline is built as it is: 
 ## How to run a variant
 
 1. **Change something without editing frozen files.** Everything with benchmark results is listed in
-   `backend/configs/frozen.json`, and a unit test fails if it changes. Add the next version instead:
+   `engine/configs/frozen.json`, and a unit test fails if it changes. Add the next version instead:
    `negotiator_system.v3.md`, `qwen-local-<variant>.yaml`, `standard-v2.yaml`.
-2. **Describe the variant as a small agent config** that extends its parent, in `backend/configs/agents/<family>/`:
+2. **Describe the variant as a small agent config** that extends its parent, in `engine/configs/agents/<family>/`:
    ```yaml
    extends: baseline
    params: {prompt: negotiator_system.v3}
@@ -44,7 +44,7 @@ The rule and its reasons are in [04-hill-climbing.md §3.1](../04-hill-climbing.
    point the same way. Don't read holdout transcripts for ideas.
 3. **Readings.** `regateo readings <dev run>`: no new kind of misread offer or acceptance behind its gains.
 4. **Promote.** `regateo freeze` its prompt and config, update "Current reference" above, add it to the roster in
-   `backend/configs/arena/league.yaml`, and run `regateo arena league`. If it loses head to head to an older champion,
+   `engine/configs/arena/league.yaml`, and run `regateo arena league`. If it loses head to head to an older champion,
    find out why before the next round.
 
 ## The climb loop

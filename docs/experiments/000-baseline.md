@@ -1,7 +1,7 @@
 # 000: The baseline, measured
 
 **Agent:** `baseline` (strategy prompt v2, `checks: limit+mentions`, `accept_words: reader`). **Reference for this
-measurement:** `o1-qwen` (plain O1). **Configs:** `backend/configs/gym/baseline.yaml`, `baseline-holdout.yaml`.
+measurement:** `o1-qwen` (plain O1). **Configs:** `engine/configs/gym/baseline.yaml`, `baseline-holdout.yaml`.
 Why the baseline is built this way: [05-learnings.md](../05-learnings.md#the-current-reference-and-why).
 
 ## Dev bench (run_01a0f26323015d857a3b, standard-v1, 240 pairs)

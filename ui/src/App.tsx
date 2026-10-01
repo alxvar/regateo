@@ -30,7 +30,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
       <div className="card">
         <h2>This page failed to render</h2>
         <p className="error mono">{this.state.error.message}</p>
-        <p className="secondary">If the backend was updated, restart <span className="mono">regateo serve</span> and
+        <p className="secondary">If the engine was updated, restart <span className="mono">regateo serve</span> and
           reload: the page may expect report fields an older server doesn't send.</p>
       </div>
     );

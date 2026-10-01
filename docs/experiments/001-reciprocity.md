@@ -1,6 +1,6 @@
 # 001: Does the baseline concede more than its opponent?
 
-**Status:** done, null. **Run:** run_01a0f2c40f6dd9711968. **Config:** `backend/configs/gym/exp-001-reciprocity.yaml` (standard-v1, successive halving).
+**Status:** done, null. **Run:** run_01a0f2c40f6dd9711968. **Config:** `engine/configs/gym/exp-001-reciprocity.yaml` (standard-v1, successive halving).
 
 ## Why
 

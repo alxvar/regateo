@@ -14,7 +14,7 @@ The gym already handles the measurement: agent identity covers every prompt and 
 
 ## 2. Terms
 
-- **Bench:** the fixed exam every agent sits. It fixes the opponents, the scenarios, the rules and a random seed, and is frozen once it has results, so scores from different weeks compare. Example: [standard-v1.yaml](../backend/configs/benches/standard-v1.yaml).
+- **Bench:** the fixed exam every agent sits. It fixes the opponents, the scenarios, the rules and a random seed, and is frozen once it has results, so scores from different weeks compare. Example: [standard-v1.yaml](../engine/configs/benches/standard-v1.yaml).
 - **Cell:** one combination of rule settings within a bench. standard-v1 has two: deadline known and deadline hidden, both with 6 rounds and private information.
 - **Pair:** the challenger and the reference each play the same scenario against the same opponent, in the same role, with the same seed. We compare their two scores. Pairing removes the luck of the draw: an easy scenario is easy for both.
 - **Tier:** a subset of a bench's scenarios. The full bench is 2 cells × 10 scenarios × 6 opponents × 2 roles = 240 pairs. Tier `screen` uses the first 4 scenarios per cell: 96 pairs.
@@ -138,8 +138,8 @@ This sets the strategy:
 | Piece | Where |
 |---|---|
 | Walk-away veto for the climbing line | O2's `checks` param: `limit` (never offer or accept past the limit) or `limit+mentions` (also never write a price past it); tested in [05-learnings.md](05-learnings.md) |
-| Holdout bench | `backend/configs/benches/holdout-v1.yaml`, `purpose: holdout`; persona `exploiter` |
-| League | `backend/configs/arena/league.yaml`; `regateo arena league` |
+| Holdout bench | `engine/configs/benches/holdout-v1.yaml`, `purpose: holdout`; persona `exploiter` |
+| League | `engine/configs/arena/league.yaml`; `regateo arena league` |
 | Promotion checks in the gym report | "Promotion checks" section per challenger: gain (by bench purpose and tier), limit, deals, per-opponent warnings |
 | Early stopping | `early_stop: true` in a gym config (`gym/early.py`): checks each challenger from 48 pairs, then every 24; stops it when mean + 2.58 × standard error < 0 |
 | Failure mining | `regateo mine RUN` (`climb/mine.py`): ranked by regret, with contrast transcripts; refuses holdout runs |

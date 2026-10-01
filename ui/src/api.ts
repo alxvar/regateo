@@ -1,4 +1,4 @@
-// Types mirror the backend's pydantic models (backend/src/regateo). Keep them in sync by hand.
+// Types mirror the engine's pydantic models (engine/src/regateo). Keep them in sync by hand.
 import { useEffect, useState } from "react";
 
 export type Role = "seller" | "buyer";
@@ -34,7 +34,7 @@ export interface MatchSummary {
 }
 
 export interface Move { text: string; action: ActionKind | null; price: number | null; meta: Record<string, unknown> }
-/** The referee's reading of a message (backend: referee.reader). */
+/** The referee's reading of a message (engine: referee.reader). */
 export interface Reading {
   kind: "offer" | "accept" | "reject" | "none"; price: number | null; source: "structured" | "rules" | "llm";
   ambiguous: boolean; candidates: number[]; note: string; shadow: Reading | null;

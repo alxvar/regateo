@@ -1,7 +1,7 @@
 import type { Message, Reading } from "../api";
 import { money } from "../format";
 
-/** The price a message offers or accepts, as the referee read it (backend: referee.reader). */
+/** The price a message offers or accepts, as the referee read it (engine: referee.reader). */
 export const priceOf = (m: Message): number | null => m.offer;
 
 /** What the sender meant: the protocol's record of its dropped action/price, or an LLM agent's decision. */

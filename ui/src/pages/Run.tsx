@@ -66,9 +66,10 @@ export function Run() {
 function withDefaults(r: GymReport): GymReport {
   return {
     ...r, purpose: r.purpose ?? "dev", tier: r.tier ?? null, source_run: r.source_run ?? null,
-    follow_ups: r.follow_ups ?? [],
+    follow_ups: r.follow_ups ?? [], by_gate: r.by_gate ?? [],
     challengers: (r.challengers ?? []).map((c) => ({
       ...c, by_opponent: c.by_opponent ?? [], by_role: c.by_role ?? [], by_cell: c.by_cell ?? [],
+      gates: c.gates ?? [], gate_past_reservation: c.gate_past_reservation ?? 0,
       stopped_at: c.stopped_at ?? null, checks: c.checks ?? [],
     })),
   };
@@ -106,8 +107,8 @@ function DuelView({ r }: { r: GymReport }) {
         </div>
       </div>
       <SideCards a={r.a} b={r.b} />
-      <WhereFrom groups={r.mode === "benchmark" ? { opponent: r.by_opponent, role: r.by_role, cell: r.by_cell }
-                                                : { cell: r.by_cell }} />
+      <WhereFrom groups={r.mode === "benchmark"
+        ? { opponent: r.by_opponent, gate: r.by_gate, role: r.by_role, cell: r.by_cell } : { cell: r.by_cell }} />
     </>
   );
 }
@@ -184,14 +185,15 @@ function BenchmarkView({ r }: { r: GymReport }) {
         </div>
         <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
           Checks (docs/04-hill-climbing.md §3.1): gain significant on a full dev bench, same direction on the holdout;
-          no deals past its own limit; deals within its own limit at most 2 points below the reference's (full runs only); no opponent significantly
-          worse. Hover a check for its numbers. The reading audit and holdout run stay with a person.
+          no deals past its own limit, gates included; deals within its own limit at most 2 points below the reference's (full runs only); no
+          scored opponent significantly worse; no drop over 0.10 against any gate (scripted opponents played but not scored). Hover a check for its numbers. The reading audit and holdout run stay with a person.
         </p>
       </div>
       <h2 style={{ margin: "8px 0 0" }}>{current.side.label} <span className="muted">vs</span> {current.reference.label}</h2>
       <SideCards a={current.side} b={current.reference} />
       <WhereFrom key={current.subject}
-                 groups={{ opponent: current.by_opponent, role: current.by_role, cell: current.by_cell }} />
+                 groups={{ opponent: current.by_opponent, gate: current.gates, role: current.by_role,
+                           cell: current.by_cell }} />
     </>
   );
 }
@@ -220,8 +222,12 @@ function SideCards({ a, b }: { a: SideStats; b: SideStats }) {
   );
 }
 
-function WhereFrom({ groups }: { groups: Partial<Record<"opponent" | "role" | "cell", Breakdown[]>> }) {
-  const keys = (Object.keys(groups) as ("opponent" | "role" | "cell")[]).filter((k) => groups[k]?.length);
+type Group = "opponent" | "gate" | "role" | "cell";
+const GROUP_TEXT: Record<Group, string> = { opponent: "by opponent", gate: "gates (not scored)", role: "by role",
+                                            cell: "by cell" };
+
+function WhereFrom({ groups }: { groups: Partial<Record<Group, Breakdown[]>> }) {
+  const keys = (Object.keys(groups) as Group[]).filter((k) => groups[k]?.length);
   if (!keys.length) keys.push("cell");
   const [group, setGroup] = useState(keys[0]);
   const rows = groups[group] ?? [];
@@ -232,10 +238,13 @@ function WhereFrom({ groups }: { groups: Partial<Record<"opponent" | "role" | "c
         <span className="spacer" />
         <div className="seg" role="tablist">
           {keys.map((g) => (
-            <button key={g} className={group === g ? "on" : ""} onClick={() => setGroup(g)}>by {g}</button>
+            <button key={g} className={group === g ? "on" : ""} onClick={() => setGroup(g)}>{GROUP_TEXT[g]}</button>
           ))}
         </div>
       </div>
+      {group === "gate" && <p className="secondary" style={{ marginTop: 0 }}>
+        Gates are played like opponents but not scored: gains against fixed scripts don't carry over to adaptive
+        opponents. A challenger fails if it drops by more than 0.10 against any of them.</p>}
       <ForestPlot rows={rows} aLabel="A" bLabel="B" />
       <details style={{ marginTop: 12 }}>
         <summary className="secondary">Table</summary>

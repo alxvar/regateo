@@ -92,3 +92,13 @@ def test_only_trusted_kinds_see_the_true_rules():
     assert o1.ctx.protocol.name == "structured"
     scripted = build_agent(AgentSpec(kind="scripted:hardliner"), view, ctx(Role.SELLER))
     assert scripted.n == S.rules.max_rounds
+
+
+def test_agent_packages_import_only_the_sdk():
+    """Agent code must run where only agent-sdk/ and agents/ exist (docs/06 §5): no engine imports."""
+    import re
+
+    from regateo.core.config import agents_dir
+    engine = re.compile(r"^\s*(?:from|import)\s+regateo(?:\.|\s|$)", re.MULTILINE)
+    offenders = [str(p.relative_to(agents_dir())) for p in agents_dir().rglob("*.py") if engine.search(p.read_text())]
+    assert offenders == []

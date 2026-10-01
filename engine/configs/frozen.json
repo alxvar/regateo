@@ -1,5 +1,5 @@
 {
-  "agents/single_call/v1": "e9349b8588b300b2",
+  "agents/single_call/v1": "c95c7e2a1ec38ac9",
   "agents/single_call/v1/configs/baseline.yaml": "91ff91a4b7d9174ecc07acc97311e14da83c5c2f8786df71bf8d514c9257f016",
   "agents/single_call/v1/configs/o1-qwen.yaml": "9a0de0635248e6ac1b4be942a7729d4477b7d625d7716d433d54a5b7acf2797c",
   "agents/single_call/v1/configs/o2-qwen.yaml": "66de6a59cefe4df111fc4ddbc168aeb1a376adce40f659d50d774ee56964a58b",

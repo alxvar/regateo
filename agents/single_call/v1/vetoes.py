@@ -7,10 +7,10 @@ from __future__ import annotations
 import re
 
 from agent_sdk import Observation, sign
-from regateo.referee.prices import find_prices, stated_prices
-from regateo.referee.reader import is_acceptance
+from agent_sdk.prices import find_prices, stated_prices
 
 from ..lib.common import fmt_price, opening_price, our_offers, standing_offer
+from ..lib.reading import is_acceptance
 from .decision import Decision
 
 TOL = 0.005
@@ -29,8 +29,8 @@ _AGREEMENT = re.compile(r"\b(?:accept\w*|agree\w*|deal\w*|sold|works for me|soun
 
 def accept_word_check(d: Decision, mode: str) -> list[str]:
     """A message that doesn't accept must not read as accepting: a platform reading free text may hold us
-    to "ready to ship the moment we agree" (experiment 002's holdout). "reader": what our referee's rules
-    reader takes as an acceptance; "strict": any agreement vocabulary, since other readers may differ."""
+    to "ready to ship the moment we agree" (experiment 002's holdout). "reader": what our own rule reader
+    (lib.reading) takes as an acceptance; "strict": any agreement vocabulary, since other readers may differ."""
     if d.action == "accept":
         return []
     hit = is_acceptance(d.message) if mode == "reader" else bool(_AGREEMENT.search(d.message))

@@ -69,7 +69,7 @@ Code may enforce hard invariants. It must not decide what to offer, how much to 
 2. A message that doesn't accept must not read as accepting.
 3. Never reveal the walk-away price.
 
-The baseline's vetoes enforce the first two. You may reuse `check(..., "limit+mentions")`, `accept_word_check(..., "reader")` and `repair` from `agents/single_call/v1/vetoes.py`, or enforce the rules your own way. The first one is a promotion gate: a single deal past the limit on any bench fails the candidate outright.
+The baseline's vetoes enforce the first two. The SDK has checks for them, `agent_sdk.guards`: `limit_problems` (the walk-away price, including prices written in the message) and `reads_as_agreement` (any agreement vocabulary). They only report what is wrong with a move, as feedback a model can act on; what to do about it stays with the agent. You may use them or enforce the rules your own way. The first one is a promotion gate: a single deal past the limit on any bench fails the candidate outright.
 
 ## 4. `Move.meta`
 
@@ -87,7 +87,7 @@ Other keys (stage traces, beliefs) are free. Keep them small and JSON-serialisab
 ## 5. What a builder may look at
 
 - **Read freely:** `agent-sdk/`, `agents/single_call/` (the baseline's architecture), `core/`, `llm/` (for usage), `protocol/`, docs 01–05 (05 is the record of what we've learned), `docs/experiments/`, and transcripts of your own dev runs (`regateo report`, the UI, `regateo workspace`).
-- **Don't read:** `engine/src/regateo/opponents/`, `referee/`, `configs/benches/`, `configs/arena/`, or anything from a holdout run. They are the exam: designing against them makes dev scores meaningless. `agents/common.py` calls the referee's price parser and reader; using those helpers is fine, but studying their internals to find out what gets through is not.
+- **Don't read:** `engine/src/regateo/opponents/`, `referee/`, `configs/benches/`, `configs/arena/`, or anything from a holdout run. They are the exam: designing against them makes dev scores meaningless. Agents can't import the engine at all: a test fails if any file under `agents/` does. What an agent needs from the engine's world is in `agent_sdk` (prices in text, the guards, the fake model for tests).
 - **Don't run:** the holdout or the league. A person runs them on the finished candidate.
 
 ## 6. Done

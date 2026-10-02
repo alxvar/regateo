@@ -286,6 +286,32 @@ def runs(kind: str | None = None, limit: int = 20, db: DbOpt = None) -> None:
     asyncio.run(go())
 
 
+@app.command(name="delete-run")
+def delete_run(
+    run_ids: Annotated[list[str], typer.Argument(help="runs to remove, e.g. ones stopped and never resumed")],
+    force: Annotated[bool, typer.Option(help="also remove runs that finished")] = False,
+    db: DbOpt = None,
+) -> None:
+    """Remove runs with their matches, messages, model calls and thinking traces. Refuses finished runs
+    unless --force: their results may be quoted somewhere. The response cache is kept."""
+    async def go() -> None:
+        store = await Store.open(_db(db))
+        try:
+            for run_id in run_ids:
+                run = await store.get_run(run_id)
+                if run is None:
+                    typer.echo(f"{run_id}: no such run")
+                elif run.status == "done" and not force:
+                    typer.echo(f"{run_id} ({run.name}): finished; kept (use --force)")
+                else:
+                    n = await store.delete_run(run_id)
+                    typer.echo(f"{run_id} ({run.name}, {run.status}): removed with {n} matches")
+        finally:
+            await store.close()
+
+    asyncio.run(go())
+
+
 @app.command()
 def mine(
     run_id: str,

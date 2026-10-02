@@ -147,6 +147,23 @@ class Store:
             c.commit()
         await self._run(q)
 
+    async def delete_run(self, run_id: str) -> int:
+        """Remove a run with its matches, messages, model calls and thinking traces. Returns the number of
+        matches removed. The response cache is separate, so replays of its requests stay free."""
+        def q(c: sqlite3.Connection) -> int:
+            if c.execute("SELECT 1 FROM runs WHERE id = ?", (run_id,)).fetchone() is None:
+                raise KeyError(run_id)
+            matches = "SELECT id FROM matches WHERE run_id = ?"
+            c.execute(f"DELETE FROM llm_reasoning WHERE call_id IN (SELECT id FROM llm_calls WHERE match_id IN "
+                      f"({matches}))", (run_id,))
+            c.execute(f"DELETE FROM llm_calls WHERE match_id IN ({matches})", (run_id,))
+            c.execute(f"DELETE FROM messages WHERE match_id IN ({matches})", (run_id,))
+            n = c.execute("DELETE FROM matches WHERE run_id = ?", (run_id,)).rowcount
+            c.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+            c.commit()
+            return n
+        return await self._run(q)
+
     async def update_run_config(self, run_id: str, patch: dict[str, Any]) -> None:
         def q(c: sqlite3.Connection) -> None:
             (raw,) = c.execute("SELECT config FROM runs WHERE id = ?", (run_id,)).fetchone()

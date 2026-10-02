@@ -72,3 +72,26 @@ async def test_thinking_traces(tmp_path, scenario):
     c = sqlite3.connect(old)
     assert c.execute("SELECT name FROM sqlite_master WHERE name = 'llm_reasoning'").fetchone()
     assert c.execute("PRAGMA user_version").fetchone()[0] == 2
+
+
+async def test_delete_run(tmp_path, scenario):
+    import pytest
+    store = await Store.open(tmp_path / "t.db")
+    runs = []
+    for name in ("stale", "kept"):
+        run_id = await store.create_run("gym", name, {})
+        mid = await store.start_match(scenario=scenario, seller=AgentRef(name="a"), buyer=AgentRef(name="b"),
+                                      protocol="freetext", run_id=run_id, seed=1, meta={})
+        await store.append_message(mid, msg(0, Role.SELLER, "$170", ActionKind.OFFER, 170))
+        await store.record_llm_call(LLMCallRecord(profile="p", provider="fake", model="m", tags={"match": mid},
+                                                  reasoning="hmm"))
+        runs.append((run_id, mid))
+    (stale, stale_match), (kept, kept_match) = runs
+    assert await store.delete_run(stale) == 1
+    assert await store.get_run(stale) is None and await store.get_match(stale_match) is None
+    assert await store.match_messages(stale_match) == [] and await store.match_llm_calls(stale_match) == []
+    assert await store.run_reasoning(stale) == []
+    assert len(await store.match_messages(kept_match)) == 1 and len(await store.run_reasoning(kept)) == 1
+    with pytest.raises(KeyError):
+        await store.delete_run(stale)
+    await store.close()

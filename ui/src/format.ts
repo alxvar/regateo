@@ -1,4 +1,4 @@
-import type { Estimate } from "./api";
+import type { Estimate, Progress } from "./api";
 
 const SYMBOLS: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };
 
@@ -45,4 +45,20 @@ export function ago(ts: number | null | undefined): string {
 export function duration(start: number, end: number | null): string {
   const s = (end ?? Date.now() / 1000) - start;
   return s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+}
+
+/** Seconds left in a running run, at its average pace so far; null until a match has finished. */
+export function etaSeconds(start: number, p: Progress): number | null {
+  const finished = Object.entries(p.by_status).reduce((a, [k, n]) => (k === "running" ? a : a + n), 0);
+  if (p.status !== "running" || !p.total || !finished) return null;
+  const elapsed = Date.now() / 1000 - start;
+  return (elapsed / finished) * Math.max(p.total - finished, 0);
+}
+
+export function eta(start: number, p: Progress): string | null {
+  const s = etaSeconds(start, p);
+  if (s == null) return null;
+  if (s < 60) return "< 1m left";
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return h ? `~${h}h ${m}m left` : `~${m}m left`;
 }

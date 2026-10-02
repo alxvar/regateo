@@ -2,7 +2,7 @@
 
 React + Vite + TypeScript dashboard over the engine's read-only API (`engine/src/regateo/api`).
 
-- **Runs:** totals and every gym, arena and match run, with live progress.
+- **Runs:** totals, the latest league's leaderboard, and runs grouped as gym, league, arena and single matches, with live progress.
 - **Gym run:** the A − B verdict with its 95% CI and p-value, per-side stats, and a forest plot of where the difference comes from (by opponent, role or scenario cell).
 - **Arena run:** a Bradley-Terry leaderboard and the pairwise results heatmap.
 - **Match:** the price path against both walk-away prices, the conversation with agent internals, and model calls. It updates live while the match runs.

@@ -6,7 +6,8 @@ import {
   type MatchSummary, type Progress, type Run as RunData, type RunReport, type SideStats,
 } from "../api";
 import { ForestPlot, Heatmap, ProgressBar, StatTile } from "../components/charts";
-import { ci, duration, interval, money, num, pValue, pct, signed, usd } from "../format";
+import { Leaderboard } from "../components/Leaderboard";
+import { ci, duration, eta, interval, money, num, pValue, pct, signed, usd } from "../format";
 
 export function Run() {
   const { id } = useParams();
@@ -51,6 +52,7 @@ export function Run() {
           <div className="row muted" style={{ fontSize: 12, marginTop: 4 }}>
             <span>{usd(p.cost_usd)}</span><span>·</span><span>{p.llm_calls} model calls</span>
             {p.by_status.failed ? <><span>·</span><span className="error">{p.by_status.failed} failed</span></> : null}
+            {eta(run.created_at, p) && <><span className="spacer" /><span>{eta(run.created_at, p)}</span></>}
           </div>
         </div>
       </div>
@@ -272,28 +274,7 @@ function ArenaView({ r }: { r: ArenaReport }) {
     <div className="grid-2">
       <div className="card">
         <h2>Leaderboard</h2>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>#</th><th>Agent</th><th className="r">Rating</th><th className="r">Mean share</th>
-              <th className="r" title="Deals within its own limit">Deals</th><th className="r">n</th></tr></thead>
-            <tbody>
-              {r.leaderboard.map((s) => (
-                <tr key={s.label}>
-                  <td className="muted">{s.rank}</td>
-                  <td><strong>{s.label}</strong>{s.past_reservation > 0 &&
-                    <span className="chip" style={{ marginLeft: 6 }}>{s.past_reservation} past walk-away</span>}</td>
-                  <td className="r">{Math.round(s.rating)}</td>
-                  <td className="r">{ci(s.mean_share)}</td>
-                  <td className="r">{pct(s.deal_rate.mean)}</td>
-                  <td className="r">{s.matches}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-          Rating: Bradley-Terry on who captured more surplus per match (no deal = draw), Elo scale.
-        </p>
+        <Leaderboard standings={r.leaderboard} />
       </div>
       <div className="card">
         <h2>Pairwise results</h2>

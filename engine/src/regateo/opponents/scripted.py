@@ -21,11 +21,12 @@ from regateo.opponents.common import fmt_price, standing_offer
 class ScriptedOpponent:
     kind = "linear"
     shape = 1.0            # curve t**shape: 1 = steady, >1 = firm until late, <1 = gives ground fast
+    params = ("shape", "voice")
 
     def __init__(self, spec: AgentSpec, view: PrivateView, ctx: TrustedContext):
-        unknown = sorted(set(spec.params) - {"shape", "voice"})
+        unknown = sorted(set(spec.params) - set(self.params))
         if unknown:
-            raise ValueError(f"unknown scripted opponent params {unknown}; known: ['shape', 'voice']")
+            raise ValueError(f"unknown params {unknown} for {spec.kind}; known: {sorted(self.params)}")
         if spec.params.get("voice", 1) not in (1, 2):
             raise ValueError(f"voice must be 1 or 2, not {spec.params['voice']!r}")
         self.shape = float(spec.params.get("shape", type(self).shape))
@@ -49,6 +50,10 @@ class ScriptedOpponent:
     def target(self, t: float) -> float:
         return self.u_open - (self.u_open - self.u_floor) * self.curve(t)
 
+    def ask(self, t: float) -> float:
+        """What it offers at progress t, in u-space: its target, unless a subclass offers otherwise."""
+        return self.target(t)
+
     def progress(self, obs: Observation) -> float:
         t = self.turn / max(self.n - 1, 1)
         if self.v.time_limit_s:
@@ -64,7 +69,7 @@ class ScriptedOpponent:
             last_word = self.turn >= self.n - 1 and not self.moves_first
             if u >= self.target(t) or (last_word and u > self.u_res):
                 return self._say(ActionKind.ACCEPT, price)
-        u = self.target(t)
+        u = self.ask(t)
         if self.last_price is not None:
             u = min(u, self.s * self.last_price)
         return self._say(ActionKind.OFFER, float(round(self.s * u)))

@@ -16,7 +16,7 @@ from regateo.runner.specs import ExperimentSpec, cell_of, resolve_agent
 # What a bench fixes. A gym that names a bench may not set these itself: results on one bench
 # stay comparable across experiments, and changing any of them means a new bench version.
 BENCH_FIELDS = ("mode", "opponents", "gates", "roles", "scenarios", "protocol", "detector", "reader", "seed",
-                "sim_clock", "tiers", "purpose")
+                "sim_clock", "tiers", "purpose", "twins")
 
 
 def load_bench(name: str) -> dict[str, Any]:
@@ -67,6 +67,10 @@ class GymSpec(ExperimentSpec):
     source_run: str | None = None                             # the run this one continues, e.g. a climb screen
     coupled: bool = True                                      # benchmark only: subjects share a pair's random
                                                               # draws (MatchJob.replay_key); False: independent
+    twins: dict[str, str] = Field(default_factory=dict)       # benchmark only: opponent label -> the opponent
+                                                              # whose seeds it plays with, so the two pair up
+                                                              # match for match (a red-team attack and its
+                                                              # plain twin; gym.report's `twins`)
 
     @model_validator(mode="before")
     @classmethod
@@ -113,6 +117,16 @@ class GymSpec(ExperimentSpec):
         """Agents under test, by subject key: a, b, then a2, a3... for the extra challengers."""
         return {"a": self.a, "b": self.b, **{f"a{n}": s for n, s in enumerate(self.extra, start=2)}}
 
+    def seed_slots(self) -> list[int]:
+        """For each opponent (gates after), the opponent index its seeds derive from: its own, or its twin's."""
+        labels = [o.label for o in [*self.opponents, *self.gates]]
+        if len(set(labels)) != len(labels):
+            raise ValueError(f"two opponents have the same label: {sorted({x for x in labels if labels.count(x) > 1})}")
+        unknown = sorted(x for pair in self.twins.items() for x in pair if x not in labels)
+        if unknown:
+            raise ValueError(f"twins name opponents this gym doesn't play: {unknown}")
+        return [labels.index(self.twins.get(label, label)) for label in labels]
+
     def per_cell_cap(self) -> int | None:
         if self.tier is None:
             return None
@@ -133,6 +147,7 @@ class GymSpec(ExperimentSpec):
         if self.mode == "duel" and self.extra:
             raise ValueError("extra challengers need benchmark mode")
         cap = self.per_cell_cap()
+        slots = self.seed_slots()
         common = {"protocol": self.protocol, "detector": self.detector, "reader": self.reader,
                   "sim_clock": self.sim_clock}
         jobs = []
@@ -156,7 +171,7 @@ class GymSpec(ExperimentSpec):
             for k, opp in enumerate([*self.opponents, *self.gates]):
                 gate = k >= len(self.opponents)
                 for role in self.roles:
-                    seed = derive_seed(self.seed, i, k, role.value)
+                    seed = derive_seed(self.seed, i, slots[k], role.value)
                     pair = f"{i}-{k}-{role.value[0]}"
                     for subject, agent in subjects.items():
                         seller, buyer = (agent, opp) if role is Role.SELLER else (opp, agent)

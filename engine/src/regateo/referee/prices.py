@@ -67,12 +67,13 @@ def without_totals(mentions: list[PriceMention]) -> list[PriceMention]:
     return rest if rest else mentions
 
 
-def stated_prices(text: str, *, require_currency: bool = False) -> list[float]:
-    """Distinct, non-negated amounts in order of appearance.
+def stated_prices(text: str, *, require_currency: bool = False, negated: bool = False) -> list[float]:
+    """Distinct, non-negated amounts in order of appearance; with `negated`, negated ones too ("I can't go
+    above $134" names $134).
 
     If any amount is currency-marked, only marked ones count ("50 chairs for $900" -> [900]).
     """
-    mentions = without_totals([p for p in find_prices(text) if not p.negated])
+    mentions = without_totals([p for p in find_prices(text) if negated or not p.negated])
     if require_currency or any(p.currency for p in mentions):
         mentions = [p for p in mentions if p.currency]
     seen: list[float] = []

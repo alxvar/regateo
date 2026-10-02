@@ -70,7 +70,6 @@ class EndToEndAgent:
                          f"{f(lo)} and {f(hi)}.")
         if v.context:
             extra.append(f"- {v.context}")
-        persona = self.params.get("persona")
         return PROMPTS.render(
             self.params.get("prompt", DEFAULT_PROMPT),
             role=v.role.value,
@@ -81,8 +80,13 @@ class EndToEndAgent:
             market_high=f(v.market_high),
             extra_info="\n".join(extra),
             protocol=self.ctx.protocol.description,
-            persona=f"\n{PROMPTS.render(f'persona_{persona}')}\n" if persona else "",
+            persona=self.persona_text(),
         )
+
+    def persona_text(self) -> str:
+        """What fills the system prompt's $persona: the persona's prompt, or nothing."""
+        persona = self.params.get("persona")
+        return f"\n{PROMPTS.render(f'persona_{persona}')}\n" if persona else ""
 
     def _messages(self, obs: Observation) -> list[ChatMessage]:
         me = obs.view.role

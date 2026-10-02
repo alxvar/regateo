@@ -103,13 +103,32 @@ def test_gate_check_fails_on_a_drop():
 
 
 def test_informed_opponents_only_on_adversarial_benches():
-    from regateo.agents import register
-    from regateo.opponents.scripted import build_scripted
+    with pytest.raises(ValueError, match="adversarial"):
+        gym("benchmark", opponents=["redteam:echo"]).jobs()
+    with pytest.raises(ValueError, match="adversarial"):
+        gym("benchmark", opponents=["scripted:liar"], gates=["redteam:stonewall"]).jobs()
+    assert gym("benchmark", opponents=["redteam:echo"], purpose="adversarial").jobs()
 
-    register("redteam:", trusted=True, informed_by=("single_call/v1",))(
-        lambda spec, view, ctx: build_scripted(spec.model_copy(update={"kind": "scripted:hardliner"}), view, ctx))
-    with pytest.raises(ValueError, match="adversarial"):
-        gym("benchmark", opponents=["redteam:x"]).jobs()
-    with pytest.raises(ValueError, match="adversarial"):
-        gym("benchmark", opponents=["scripted:liar"], gates=["redteam:x"]).jobs()
-    assert gym("benchmark", opponents=["redteam:x"], purpose="adversarial").jobs()
+
+def test_twins_share_seeds():
+    plain = {"kind": "redteam:echo", "params": {"plain": True}, "name": "echo-plain"}
+    spec = gym("benchmark", opponents=["redteam:echo", plain, "redteam:anchor"], purpose="adversarial",
+               twins={"echo-plain": "redteam:echo"})
+    seeds = {(j.meta["opponent"], j.meta["pair"].split("-")[0], j.meta["role"]): j.seed for j in spec.jobs()}
+    for (opp, i, role), seed in seeds.items():
+        if opp == "echo-plain":
+            assert seed == seeds[("redteam:echo", i, role)] != seeds[("redteam:anchor", i, role)]
+    with pytest.raises(ValueError, match="twins"):
+        gym("benchmark", opponents=["redteam:echo"], purpose="adversarial", twins={"x": "redteam:echo"}).jobs()
+
+
+async def test_report_pairs_attacks_with_their_twins(tmp_path):
+    store = await Store.open(tmp_path / "t.db")
+    plain = {"kind": "redteam:echo", "params": {"plain": True}, "name": "echo-plain"}
+    spec = gym("benchmark", opponents=["redteam:echo", plain], purpose="adversarial",
+               twins={"echo-plain": "redteam:echo"}, scenarios={"per_cell": 2, "max_rounds": [4]})
+    run_id, _ = await run_gym(spec, store)
+    r = await build_gym_report(store, run_id)
+    assert [t.key for t in r.twins] == ["boulware | redteam:echo", "soft | redteam:echo"]
+    assert all(t.diff.n == 4 and t.diff.mean_diff == 0 for t in r.twins)    # boulware doesn't read the words
+    await store.close()

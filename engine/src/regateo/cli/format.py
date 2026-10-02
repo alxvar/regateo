@@ -5,6 +5,7 @@ from regateo.arena.report import ArenaReport
 from regateo.core.messages import Message, Reading
 from regateo.core.outcome import Outcome
 from regateo.gym.report import Breakdown, GymReport
+from regateo.gym.signals import Signals
 from regateo.referee.audit import Group, ReadingAudit
 from regateo.stats import Estimate, PairedResult
 
@@ -24,14 +25,14 @@ def diff(d: PairedResult) -> str:
             f"A ahead in {100 * d.a_better:.0f}% of pairs, B in {100 * d.b_better:.0f}%")
 
 
-def _table(title: str, rows: list[Breakdown]) -> list[str]:
+def _table(title: str, rows: list[Breakdown], a: str = "A", b: str = "B", width: int = 24) -> list[str]:
     if not rows:
         return []
-    out = [f"\n{title}", f"  {'':24} {'A share':>24} {'B share':>24}  {'A-B':>7}  {'p':>7}  {'n':>4}"]
+    out = [f"\n{title}", f"  {'':{width}} {a + ' share':>24} {b + ' share':>24}  {a + '-' + b:>7}  {'p':>7}  {'n':>4}"]
     for r in rows:
         d = r.diff
         cols = f"{d.mean_diff:+7.3f}  {d.p_value:7.4f}" if d.p_value is not None else f"{'-':>7}  {'-':>7}"
-        out.append(f"  {r.key[:24]:24} {est(r.a):>24} {est(r.b):>24}  {cols}  {d.n:4d}")
+        out.append(f"  {r.key[:width]:{width}} {est(r.a):>24} {est(r.b):>24}  {cols}  {d.n:4d}")
     return out
 
 
@@ -55,6 +56,8 @@ def gym_report(r: GymReport) -> str:
     lines += _table("By opponent", r.by_opponent) + _table("By role", r.by_role) + _table("By cell", r.by_cell)
     if r.by_gate:
         lines += _table("Gates (not scored)", r.by_gate)
+    lines += _table("What each attack costs: share against it minus against its plain twin (paired)", r.twins,
+                    a="att", b="plain", width=48)
     lines.append(f"\nCost ${r.cost_usd:.4f}  tokens in {r.input_tokens:,} / out {r.output_tokens:,}")
     lines += _checks(r)
     return "\n".join(lines)
@@ -67,12 +70,37 @@ def _checks(r: GymReport) -> list[str]:
     if not r.challengers:
         return []
     where = f"{r.purpose} bench" + (f", tier {r.tier}" if r.tier else ", full")
-    out = [f"\nPromotion checks ({where}; docs/04-hill-climbing.md §3.1; also run `regateo readings {r.run_id}`)"]
+    out = [f"\nPromotion checks ({where}; docs/04-hill-climbing.md §3.1; also run `regateo readings {r.run_id}`"
+           f" and `regateo signals {r.run_id}`)"]
     for c in sorted(r.challengers, key=lambda c: -(c.diff.mean_diff or 0)):
         verdict = "candidate" if all(k.status in ("pass", "warn") for k in c.checks) else "no"
         out.append(f"  {c.subject:4} {c.side.label[:40]:40} {verdict}")
         out += [f"         {_MARK[k.status]} {k.name:10} {k.detail}" for k in c.checks]
     return out
+
+
+def _share(k: int, n: int) -> str:
+    return f"{100 * k / n:3.0f}% {f'({n})':>6}" if n else f"{'-':>4} {'(0)':>6}"
+
+
+def signals(run_id: str, rows: list[Signals]) -> str:
+    """Rates per agent; the count each rate is out of in brackets (regateo.gym.signals says what each one means)."""
+    out = [f"Exploit signals for {run_id} (rate, out of how many)",
+           "  repeats, rewritten  of its messages: repeated word for word; rewritten by its own checks",
+           "  unrecip.            of its concessions: made with no move from them since its previous offer",
+           "  dominated           of its matches: it offered worse for itself than their standing offer",
+           "  missed              of its no-deals: they had offered a price within its limit",
+           "  broken              of offers it called final: it conceded from them later",
+           "  near limit          of its matches: it named its own walk-away price (within 1% of the market range)\n",
+           f"  {'agent':30} {'matches':>7}  {'repeats':>11}  {'rewritten':>11}  {'unrecip.':>11}  {'dominated':>11}"
+           f"  {'missed':>11}  {'broken':>11}  {'near limit':>11}"]
+    for s in rows:
+        name = s.agent if s.opponent == "all" else f"  vs {s.opponent}"
+        out.append(f"  {name[:30]:30} {s.matches:7d}  {_share(s.repeats, s.turns)}  {_share(s.rewritten, s.turns)}"
+                   f"  {_share(s.unreciprocated, s.concessions)}  {_share(s.dominated, s.matches)}"
+                   f"  {_share(s.missed, s.no_deals)}  {_share(s.broken_finals, s.finals)}"
+                   f"  {_share(s.near_limit, s.matches)}")
+    return "\n".join(out)
 
 
 def proposals(written: list, rejected: list) -> str:

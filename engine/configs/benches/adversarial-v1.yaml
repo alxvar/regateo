@@ -2,12 +2,31 @@
 # agents' code (registered with `informed_by`, regateo.agents.base.register). They are red-team tests:
 # useful for robustness, but unfair to the agents they were written against when comparing agents, so
 # only this bench may play them, never dev or the holdout. Results here are a gate a person reads, not a
-# score.
+# score: read the report's per-opponent split and `regateo signals RUN --by-opponent`.
 #
-# Empty until the first such opponent exists: add it under `opponents`, then this bench can run.
+# The red-team opponents (regateo.opponents.redteam) each attack one weakness seen in climb round-01. The
+# `-plain` ones make the same price moves in plain words and never spring the trap. `twins` gives each the
+# seeds of its attack, so the report pairs them match for match: attack minus plain is what the attack itself
+# costs. Stonewall and anchor attack with their moves, so they have no plain twin. redteam:llm is Qwen with
+# thinking, the strategy prompt and a brief of these weaknesses; its plain twin is the same without the brief.
 purpose: adversarial
 mode: benchmark
-opponents: []
+opponents:
+  - redteam:echo
+  - {kind: "redteam:echo", params: {plain: true}, name: "redteam:echo-plain"}
+  - redteam:misquote
+  - {kind: "redteam:misquote", params: {plain: true}, name: "redteam:misquote-plain"}
+  - redteam:quote-accept
+  - {kind: "redteam:quote-accept", params: {plain: true}, name: "redteam:quote-accept-plain"}
+  - redteam:stonewall
+  - redteam:anchor
+  - {kind: "redteam:llm", model: qwen-local-think, name: "redteam:llm"}
+  - {kind: "redteam:llm", model: qwen-local-think, params: {plain: true}, name: "redteam:llm-plain"}
+twins:
+  redteam:echo-plain: redteam:echo
+  redteam:misquote-plain: redteam:misquote
+  redteam:quote-accept-plain: redteam:quote-accept
+  redteam:llm-plain: redteam:llm
 scenarios: {per_cell: 10, info_modes: [private], max_rounds: [6], deadline_known: [true, false]}
 protocol: freetext
 detector: text

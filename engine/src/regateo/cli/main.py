@@ -18,6 +18,7 @@ from regateo.core.config import configs_dir, data_dir, load_env, load_yaml
 from regateo.core.scenario import ScenarioSpec, sample_scenarios
 from regateo.core.version import code_version
 from regateo.gym import GymSpec, build_gym_report, run_gym
+from regateo.gym.signals import run_signals, sides
 from regateo.llm.cache import CachedClient, CacheMode
 from regateo.llm.profiles import load_profile
 from regateo.llm.registry import get_client
@@ -204,6 +205,31 @@ def readings(
         typer.echo(fmt.reading_audit(audit_readings(run_id, matches, max_examples=examples)))
 
     asyncio.run(go())
+
+
+@app.command()
+def signals(
+    run_id: str,
+    by_opponent: Annotated[bool, typer.Option("--by-opponent", help="one row per opponent under each agent")] = False,
+    agent: Annotated[str | None, typer.Option(help="only agents whose label contains this")] = None,
+    db: DbOpt = None,
+) -> None:
+    """Exploit signals: patterns in each agent's play an opponent could use (regateo.gym.signals)."""
+    async def go() -> list:
+        store = await Store.open(_db(db), readonly=True)
+        try:
+            if await store.get_run(run_id) is None:
+                raise typer.BadParameter(f"no run {run_id}")
+            plays = []
+            for row in await store.list_matches(run_id):
+                if row.status == "done":
+                    plays += sides(row, await store.match_messages(row.id))
+            return plays
+        finally:
+            await store.close()
+
+    plays = [p for p in asyncio.run(go()) if agent is None or agent in p.agent]
+    typer.echo(fmt.signals(run_id, run_signals(plays, by_opponent=by_opponent)))
 
 
 @app.command()

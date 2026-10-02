@@ -63,7 +63,7 @@ class GymReport(BaseModel):
     run_id: str
     name: str
     mode: str
-    purpose: str = "dev"             # dev | holdout: which promotion checks apply
+    purpose: str = "dev"             # dev | holdout | adversarial: which promotion checks apply
     tier: str | None = None
     source_run: str | None = None    # the run this one continues (a climb round's screen)
     follow_ups: list[FollowUp] = []
@@ -78,6 +78,8 @@ class GymReport(BaseModel):
     by_cell: list[Breakdown]
     by_gate: list[Breakdown] = []               # benchmark mode: A - B against each gate opponent, not scored
     challengers: list[ChallengerStats] = []    # benchmark mode: A and every extra challenger vs B
+    twins: list[Breakdown] = []                # benchmark mode with twins: each subject's share against an
+                                               # attack (a) minus against its plain twin (b); key "agent | attack"
     cost_usd: float
     input_tokens: int
     output_tokens: int
@@ -195,6 +197,9 @@ def promotion_checks(c: ChallengerStats, *, purpose: str, tier: str | None) -> l
     elif purpose == "holdout":
         out.append(Check(name="gain", status="pass" if d.mean_diff > 0 else "fail",
                          detail=f"{d.mean_diff:+.3f}; holdout needs the same direction"))
+    elif purpose == "adversarial":
+        out.append(Check(name="gain", status="n/a",
+                         detail=f"{d.mean_diff:+.3f}; red-team opponents are read, not scored (docs/04 §4)"))
     else:
         ok = d.mean_diff > 0 and d.p_value < 0.05
         out.append(Check(name="gain", status="pass" if ok else "fail", detail=f"{d.mean_diff:+.3f}, p={d.p_value:.4f}"))
@@ -288,9 +293,27 @@ async def build_gym_report(store: Store, run_id: str) -> GymReport:
         by_cell=_breakdown(group("cell")),
         by_gate=_breakdown(_by_opponent(gym_pairs(rows, mode, gate=True)[2])) if mode == "benchmark" else [],
         challengers=challengers,
+        twins=twin_breakdown(rows, run.config.get("twins") or {}, {**labels, "b": b_label})
+        if mode == "benchmark" else [],
         cost_usd=progress["cost_usd"], input_tokens=progress["input_tokens"],
         output_tokens=progress["output_tokens"],
     )
+
+
+def twin_breakdown(rows: Iterable[MatchRow], twins: dict[str, str], labels: dict[str, str]) -> list[Breakdown]:
+    """Each subject's share against a red-team attack minus its share against the attack's plain twin, paired on
+    scenario and role, which share seeds (GymSpec.twins): what the attack itself costs that agent."""
+    share: dict[tuple[str, str, str, str], float] = {}
+    for r in rows:
+        if r.status == "done" and r.outcome and "subject" in r.meta:
+            i, _, role = r.meta["pair"].split("-")
+            share[(r.meta["subject"], r.meta["opponent"], i, role)] = r.outcome.share(Role(r.meta["role"]))
+    groups: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for (subject, opponent, i, role), attacked in share.items():
+        for plain, attack in twins.items():
+            if opponent == attack and (calm := share.get((subject, plain, i, role))) is not None:
+                groups[f"{labels.get(subject, subject)} | {attack}"].append((attacked, calm))
+    return _breakdown(groups)
 
 
 def _by_opponent(pairs: list[dict]) -> dict[str, list[tuple[float, float]]]:

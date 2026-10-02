@@ -76,9 +76,10 @@ class AnthropicProvider:
             raise LLMRefusal(f"{msg.model} refused (category={category})", category=category)
 
         text = "".join(b.text for b in msg.content if b.type == "text")
+        reasoning = "\n\n".join(b.thinking for b in msg.content if b.type == "thinking")
         parsed = getattr(msg, "parsed_output", None) if req.output_schema else None
         if req.output_schema and parsed is None:
-            raise LLMBadOutput(f"no parsed output (stop_reason={msg.stop_reason})", text=text)
+            raise LLMBadOutput(f"no parsed output (stop_reason={msg.stop_reason})", text=text, reasoning=reasoning)
 
         u = msg.usage
         usage = Usage(
@@ -90,5 +91,5 @@ class AnthropicProvider:
         return LLMResponse(
             text=text, parsed=parsed, usage=usage, cost_usd=self.profile.price.cost(usage),
             latency_s=latency, provider=self.provider, profile=self.profile_name,
-            model=msg.model, stop_reason=msg.stop_reason,
+            model=msg.model, stop_reason=msg.stop_reason, reasoning=reasoning,
         )

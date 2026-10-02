@@ -24,6 +24,10 @@ from regateo.core.scenario import Scenario
 from regateo.llm.types import LLMCallRecord
 
 SCHEMA_VERSION = 2
+# Added on open rather than by a version bump: processes still running older code (a resumed gym, the dashboard)
+# refuse a newer schema version, and an extra table doesn't affect them.
+REASONING_DDL = ("CREATE TABLE IF NOT EXISTS llm_reasoning (call_id INTEGER PRIMARY KEY REFERENCES llm_calls(id), "
+                 "text TEXT NOT NULL)")
 
 
 class RunRow(BaseModel):
@@ -136,6 +140,8 @@ class Store:
         """Forget a partially played match so it can be replayed (resume after a crash)."""
         def q(c: sqlite3.Connection) -> None:
             c.execute("DELETE FROM messages WHERE match_id = ?", (match_id,))
+            c.execute("DELETE FROM llm_reasoning WHERE call_id IN (SELECT id FROM llm_calls WHERE match_id = ?)",
+                      (match_id,))
             c.execute("DELETE FROM llm_calls WHERE match_id = ?", (match_id,))
             c.execute("DELETE FROM matches WHERE id = ?", (match_id,))
             c.commit()
@@ -160,6 +166,9 @@ class Store:
                 (rec.tags.get("match"), rec.profile, rec.provider, rec.model, json.dumps(rec.tags),
                  u.input_tokens, u.output_tokens, u.cache_read_tokens, u.cache_write_tokens, rec.cost_usd,
                  rec.latency_s, int(rec.cached), rec.error, time.time()))
+            if rec.reasoning:
+                c.execute("INSERT INTO llm_reasoning (call_id, text) VALUES (last_insert_rowid(), ?)",
+                          (rec.reasoning,))
             c.commit()
         await self._run(q)
 
@@ -238,13 +247,28 @@ class Store:
 
     async def match_llm_calls(self, match_id: str) -> list[LLMCallRecord]:
         rows = await self._run(lambda c: c.execute(
-            "SELECT * FROM llm_calls WHERE match_id = ? ORDER BY id", (match_id,)).fetchall())
+            "SELECT l.*, COALESCE(r.text, '') AS reasoning FROM llm_calls l LEFT JOIN llm_reasoning r"
+            " ON r.call_id = l.id WHERE l.match_id = ? ORDER BY l.id", (match_id,)).fetchall())
         return [LLMCallRecord(
             profile=r["profile"], provider=r["provider"], model=r["model"], tags=json.loads(r["tags"]),
             usage={"input_tokens": r["input_tokens"], "output_tokens": r["output_tokens"],
                    "cache_read_tokens": r["cache_read_tokens"], "cache_write_tokens": r["cache_write_tokens"]},
             cost_usd=r["cost_usd"], latency_s=r["latency_s"], cached=bool(r["cached"]), error=r["error"],
+            reasoning=r["reasoning"],
         ) for r in rows]
+
+    async def run_reasoning(self, run_id: str) -> list[dict[str, Any]]:
+        """Every stored thinking trace of a run's matches, oldest first: the call's match, tags, profile, tokens,
+        error and the trace."""
+        def q(c: sqlite3.Connection) -> list[sqlite3.Row]:
+            return c.execute(
+                "SELECT l.id, l.match_id, l.profile, l.tags, l.input_tokens, l.output_tokens, l.latency_s, l.cached,"
+                " l.error, l.created_at, r.text FROM llm_reasoning r JOIN llm_calls l ON l.id = r.call_id"
+                " JOIN matches m ON m.id = l.match_id WHERE m.run_id = ? ORDER BY l.id", (run_id,)).fetchall()
+        return [{"call_id": r["id"], "match_id": r["match_id"], "profile": r["profile"], "tags": json.loads(r["tags"]),
+                 "input_tokens": r["input_tokens"], "output_tokens": r["output_tokens"], "latency_s": r["latency_s"],
+                 "cached": bool(r["cached"]), "error": r["error"], "created_at": r["created_at"],
+                 "reasoning": r["text"]} for r in await self._run(q)]
 
 
 def _connect(path: Path, readonly: bool = False) -> sqlite3.Connection:
@@ -269,6 +293,8 @@ def _connect(path: Path, readonly: bool = False) -> sqlite3.Connection:
         conn.commit()
     elif version != SCHEMA_VERSION:
         raise RuntimeError(f"{path}: schema version {version}, expected {SCHEMA_VERSION}")
+    conn.execute(REASONING_DDL)
+    conn.commit()
     return conn
 
 

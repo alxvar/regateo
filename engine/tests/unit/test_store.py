@@ -39,3 +39,36 @@ async def test_round_trip(tmp_path, scenario):
     reopened = await Store.open(tmp_path / "t.db")                 # schema already there
     assert (await reopened.get_match(mid)).status == "done"
     await reopened.close()
+
+
+async def test_thinking_traces(tmp_path, scenario):
+    import sqlite3
+    path = tmp_path / "t.db"
+    store = await Store.open(path)
+    run_id = await store.create_run("gym", "g", {})
+    mid = await store.start_match(scenario=scenario, seller=AgentRef(name="a"), buyer=AgentRef(name="b"),
+                                  protocol="freetext", run_id=run_id, seed=1, meta={})
+    tags = {"match": mid, "agent": "a", "stage": "strategist"}
+    await store.record_llm_call(LLMCallRecord(profile="p", provider="fake", model="m", tags=tags,
+                                              reasoning="They opened low, so..."))
+    await store.record_llm_call(LLMCallRecord(profile="p", provider="fake", model="m", tags=tags,
+                                              error="LLMBadOutput: truncated", reasoning="Wait, maybe..."))
+    await store.record_llm_call(LLMCallRecord(profile="p", provider="fake", model="m", tags=tags))
+    [first, failed] = await store.run_reasoning(run_id)
+    assert first["reasoning"] == "They opened low, so..." and first["tags"]["stage"] == "strategist"
+    assert failed["error"] and failed["reasoning"] == "Wait, maybe..."
+    assert [c.reasoning for c in await store.match_llm_calls(mid)] == ["They opened low, so...", "Wait, maybe...", ""]
+    await store.reset_match(mid)
+    assert await store.run_reasoning(run_id) == []
+    await store.close()
+    # A database made before the table existed gains it on open, without a schema version change.
+    old = tmp_path / "old.db"
+    await (await Store.open(old)).close()
+    c = sqlite3.connect(old)
+    c.execute("DROP TABLE llm_reasoning")
+    c.commit()
+    c.close()
+    await (await Store.open(old)).close()
+    c = sqlite3.connect(old)
+    assert c.execute("SELECT name FROM sqlite_master WHERE name = 'llm_reasoning'").fetchone()
+    assert c.execute("PRAGMA user_version").fetchone()[0] == 2

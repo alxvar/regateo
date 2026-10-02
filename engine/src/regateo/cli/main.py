@@ -233,6 +233,46 @@ def signals(
 
 
 @app.command()
+def thinking(
+    run_id: str,
+    agent: Annotated[str | None, typer.Option(help="only this agent's calls (its label, or 'referee')")] = None,
+    stage: Annotated[str | None, typer.Option(help="only this stage, e.g. strategist")] = None,
+    out: Annotated[Path | None, typer.Option(help="JSONL file (default: data/thinking/<run_id>.jsonl)")] = None,
+    db: DbOpt = None,
+) -> None:
+    """Export a run's stored thinking traces as JSONL, one call per line, and summarise them by agent and stage.
+    Traces include the referee's and opponents' thinking: engine tier, for people (docs/06 §5)."""
+    import json
+    from collections import defaultdict
+
+    async def go() -> list[dict]:
+        store = await Store.open(_db(db))
+        try:
+            if await store.get_run(run_id) is None:
+                raise typer.BadParameter(f"no run {run_id}")
+            return await store.run_reasoning(run_id)
+        finally:
+            await store.close()
+
+    rows = [r for r in asyncio.run(go())
+            if (agent is None or r["tags"].get("agent", r["tags"].get("stage")) == agent)
+            and (stage is None or r["tags"].get("stage") == stage)]
+    path = out or data_dir() / "thinking" / f"{run_id}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+    groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for r in rows:
+        groups[(r["tags"].get("agent", "-"), r["tags"].get("stage", "-"))].append(r)
+    typer.echo(f"{len(rows)} traces -> {path}")
+    for (a, s), rs in sorted(groups.items()):
+        chars = sum(len(r["reasoning"]) for r in rs) / len(rs)
+        errors = sum(bool(r["error"]) for r in rs)
+        typer.echo(f"  {a:32} {s:12} {len(rs):5} traces  {chars:8,.0f} chars avg  {errors} failed")
+
+
+@app.command()
 def runs(kind: str | None = None, limit: int = 20, db: DbOpt = None) -> None:
     """List recent runs."""
     async def go() -> None:

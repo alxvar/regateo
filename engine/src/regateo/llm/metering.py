@@ -66,10 +66,12 @@ class MeteredClient:
             await self.meter.record(LLMCallRecord(
                 profile=self.profile_name, provider=self.provider, model="", tags=tags,
                 latency_s=time.perf_counter() - start, error=f"{type(e).__name__}: {e}",
+                reasoning=getattr(e, "reasoning", ""),
             ))
             raise
         await self.meter.record(LLMCallRecord(
             profile=self.profile_name, provider=self.provider, model=resp.model, tags=tags,
             usage=resp.usage, cost_usd=resp.cost_usd, latency_s=resp.latency_s, cached=resp.cached,
+            reasoning=resp.reasoning,
         ))
         return resp

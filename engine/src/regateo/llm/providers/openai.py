@@ -16,6 +16,13 @@ from regateo.llm.types import LLMRequest, LLMResponse, Usage
 _THINK = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
 
+def inline_thinking(text: str) -> str:
+    """Reasoning in <think> tags inside the content (a model served without a reasoning parser)."""
+    if "</think>" not in text:
+        return ""
+    return text.split("</think>", 1)[0].replace("<think>", "", 1).strip()
+
+
 def strip_thinking(text: str) -> str:
     """Drop inline reasoning. vLLM with a reasoning parser returns it separately; without one,
     Qwen-style models put it in <think> tags at the start of the content."""
@@ -82,17 +89,21 @@ class OpenAIProvider:
         choice = resp.choices[0]
         if choice.finish_reason == "content_filter":
             raise LLMRefusal(f"{resp.model} content filter")
-        text = strip_thinking(choice.message.content or "")
+        content = choice.message.content or ""
+        # vLLM with a reasoning parser: `reasoning_content` (older) or `reasoning` (newer), an extra field.
+        reasoning = (getattr(choice.message, "reasoning_content", None) or getattr(choice.message, "reasoning", None)
+                     or inline_thinking(content))
+        text = strip_thinking(content)
 
         parsed = None
         if req.output_schema:
             if choice.finish_reason == "length":
-                raise LLMBadOutput("output truncated at max_tokens", text=text)
+                raise LLMBadOutput("output truncated at max_tokens", text=text, reasoning=reasoning)
             try:
                 parsed = req.output_schema.model_validate_json(text)
             except ValidationError as e:
                 raise LLMBadOutput(f"response does not match {req.output_schema.__name__}: {e}",
-                                   text=text) from e
+                                   text=text, reasoning=reasoning) from e
 
         usage = Usage()
         if resp.usage:
@@ -102,5 +113,5 @@ class OpenAIProvider:
         return LLMResponse(
             text=text, parsed=parsed, usage=usage, cost_usd=self.profile.price.cost(usage),
             latency_s=latency, provider=self.provider, profile=self.profile_name,
-            model=resp.model, stop_reason=choice.finish_reason,
+            model=resp.model, stop_reason=choice.finish_reason, reasoning=reasoning,
         )

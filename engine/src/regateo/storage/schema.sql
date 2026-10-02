@@ -66,3 +66,11 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     created_at          REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS llm_calls_match ON llm_calls(match_id);
+
+-- The model's thinking per call, kept apart so llm_calls stays small to scan. Added to existing databases
+-- on open without a schema version bump, so processes on older code keep working.
+CREATE TABLE IF NOT EXISTS llm_reasoning (
+    call_id     INTEGER PRIMARY KEY REFERENCES llm_calls(id),
+    text        TEXT NOT NULL
+);
+

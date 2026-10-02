@@ -61,6 +61,7 @@ class LLMResponse(BaseModel):
     model: str = ""                  # the model that actually answered (may differ after a fallback)
     stop_reason: str | None = None
     cached: bool = False             # served from the record/replay cache
+    reasoning: str = ""              # the model's thinking, when the provider returns it (not part of `text`)
 
 
 @runtime_checkable
@@ -98,6 +99,7 @@ class LLMRefusal(LLMError):
 class LLMBadOutput(LLMError):
     """The model answered, but not in the requested shape (schema mismatch, truncated JSON)."""
 
-    def __init__(self, message: str, *, text: str = ""):
+    def __init__(self, message: str, *, text: str = "", reasoning: str = ""):
         super().__init__(message)
         self.text = text
+        self.reasoning = reasoning      # thinking up to the failure, e.g. a plan cut off at max_tokens

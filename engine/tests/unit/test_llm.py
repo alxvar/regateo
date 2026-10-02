@@ -120,3 +120,41 @@ def test_strip_thinking():
     assert strip_thinking("<think>hmm</think>\n{\"a\": 1}") == '{"a": 1}'
     assert strip_thinking("reasoning...</think>answer") == "answer"
     assert strip_thinking("plain") == "plain"
+
+
+async def test_openai_keeps_the_reasoning():
+    from types import SimpleNamespace
+
+    from regateo.llm.profiles import ModelProfile
+    from regateo.llm.providers.openai import OpenAIProvider, inline_thinking
+
+    def reply(content, finish="stop", **message):
+        return SimpleNamespace(choices=[SimpleNamespace(finish_reason=finish,
+                                                        message=SimpleNamespace(content=content, **message))],
+                               usage=None, model="qwen")
+
+    prov = OpenAIProvider(ModelProfile(name="q", provider="openai", model="q", base_url="http://x/v1"))
+    replies = [reply('{"price": 150}', reasoning_content="They opened low."),
+               reply('<think>inline</think>{"price": 150}'),
+               reply('{"pri', finish="length", reasoning="Wait, maybe...")]
+
+    async def create(**kw):
+        return replies.pop(0)
+    prov._client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    first = await prov.complete(LLMRequest.of("x", output_schema=Offer))
+    assert first.reasoning == "They opened low." and first.parsed == Offer(price=150)
+    assert (await prov.complete(LLMRequest.of("x", output_schema=Offer))).reasoning == "inline"
+    with pytest.raises(LLMBadOutput) as e:
+        await prov.complete(LLMRequest.of("x", output_schema=Offer))
+    assert e.value.reasoning == "Wait, maybe..."
+    assert inline_thinking("no tags") == ""
+
+    seen = []
+
+    async def sink(rec):
+        seen.append(rec)
+    meter = Meter(sink=sink)
+    with pytest.raises(LLMBadOutput):
+        await meter.wrap(FakeProvider([LLMBadOutput("truncated", reasoning="cut off")])).complete(LLMRequest.of("x"))
+    await meter.wrap(FakeProvider(["ok"])).complete(LLMRequest.of("x"))
+    assert [r.reasoning for r in seen] == ["cut off", ""]

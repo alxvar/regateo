@@ -19,3 +19,4 @@ class LLMCallRecord(BaseModel):
     latency_s: float = 0.0
     cached: bool = False
     error: str | None = None
+    reasoning: str = ""              # the model's thinking (stored apart, in llm_reasoning)

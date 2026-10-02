@@ -1,0 +1,3 @@
+# v2's hold, with the veto on offers worse for us than their standing offer. ranged/v2/hold is the same agent with it off.
+extends: ranged/v2/hold
+params: {standing: true}

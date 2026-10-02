@@ -1,10 +1,12 @@
-# Round-01's promotion candidates and the reference against the red-team opponents (adversarial-v1). Every
+# Round-01's promotion candidates and the reference against the red-team opponents (adversarial-v1), plus
+# ranged/v3/hold-standing: ranged/v2/hold with the veto on offers worse than their standing offer. Every
 # challenger plays the whole bench: the point is to read where each one breaks, not to rank them.
 name: redteam-01
 bench: adversarial-v1
 reference: single_call/v1/baseline
 challengers:
   - ranged/v2/hold
+  - ranged/v3/hold-standing
   - tools/v1/call
   - strategist/v2/guided
   - single_call/v2/no-quote

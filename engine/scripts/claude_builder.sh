@@ -2,7 +2,8 @@
 # Run Claude Code as the builder for one architecture in a climb round, on a workspace from
 # `regateo round export --venv` (regateo.climb.round, docs/06-agent-contract.md §5).
 #
-#   scripts/claude_builder.sh WORKSPACE [MODEL]          # MODEL defaults to claude-sonnet-5-5
+#   scripts/claude_builder.sh WORKSPACE [MODEL [EFFORT]]   # MODEL defaults to claude-sonnet-5-5; EFFORT, e.g. high,
+#                                                         # defaults to Claude Code's own
 #
 # Several in parallel, one per architecture:
 #   for ws in ROUND_DIR/*/; do scripts/claude_builder.sh "$ws" & done; wait
@@ -21,6 +22,7 @@ set -euo pipefail
 
 WS=$(realpath "$1")
 MODEL=${2:-claude-sonnet-5-5}
+EFFORT=${3:-}
 CLAUDE=${CLAUDE_BIN:-$(command -v claude || ls -d "$HOME"/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude | sort -V | tail -1)}
 CREDS="$HOME/.claude/.credentials.json"
 [[ -f "$WS/.regateo-round.json" ]] || { echo "$WS is not a round workspace (no .regateo-round.json)" >&2; exit 1; }
@@ -53,7 +55,7 @@ bwrap \
   --unshare-pid --unshare-ipc --unshare-uts --die-with-parent \
   --clearenv --setenv HOME /home/builder --setenv PATH "$WS/.venv/bin:/usr/bin" --setenv TERM dumb \
   /opt/claude -p "Read README.md in this folder and do the task it describes. Work only inside this folder." \
-    --model "$MODEL" \
+    --model "$MODEL" ${EFFORT:+--effort "$EFFORT"} \
     --tools Read Glob Grep Write Edit Bash \
     --permission-mode dontAsk \
     --allowedTools Read Glob Grep Write Edit "Bash(python *)" "Bash(python3 *)" "Bash(pytest *)" \

@@ -154,3 +154,37 @@ async def test_the_reference_can_be_a_lines_parent(world):
     assert parents["toy_a"] == (f"toy_a/v1/{finalist.side.label.removeprefix('toy_a-v1-')}" if beat else
                                 "toy_a/v1/base")
     assert "`toy_a/v1/base` (the reference): 0" in (agents / "toy_a/JOURNAL.md").read_text()
+
+
+async def test_listed_variants_also_configs_and_a_red_team_summary(world):
+    """variants.txt picks what is measured; `also` configs join their line; a red-team run is summarised."""
+    agents = world / "agents"
+    (agents / "toy_a/v1/configs/later.yaml").write_text("extends: toy_a/v1/base\nparams: {step: 0.8}\n")
+    (world / "configs/benches/adv.yaml").write_text(yaml.safe_dump({
+        "purpose": "adversarial", "mode": "benchmark",
+        "opponents": ["scripted:hardliner", {"kind": "scripted:hardliner", "name": "hardliner-plain"}],
+        "twins": {"hardliner-plain": "scripted:hardliner"}, "scenarios": {"per_cell": 2, "max_rounds": [4]},
+        "protocol": "structured", "detector": "structured", "reader": "rules", "sim_clock": True, "seed": 2}))
+    store = await Store.open(world / "db")
+    dev, _ = await run_gym(GymSpec.model_validate({"name": "r0", "bench": "toy", "reference": "boulware",
+                                                   "challengers": ["toy_a/v1/base"]}), store)
+    adv, _ = await run_gym(GymSpec.model_validate({"name": "rt", "bench": "adv", "reference": "boulware",
+                                                   "challengers": ["toy_a/v1/base", "toy_a/v1/later"]}), store)
+    with pytest.raises(ValueError, match="not an adversarial"):
+        await rnd.export(store, dev, ["toy_a/v1/base"], world / "r1", redteam=dev)
+    [ws] = await rnd.export(store, dev, ["toy_a/v1/base"], world / "round", also=["toy_a/v1/later"], redteam=adv)
+    assert "`toy_a/v1/later`" in (ws / "README.md").read_text() and "redteam.md" in (ws / "README.md").read_text()
+    summary = (ws / "data/redteam.md").read_text()
+    assert "## toy_a-v1-base" in summary and "## toy_a-v1-later" in summary
+    assert "What each attack costs you" in summary and "**scripted:hardliner**" in summary
+    assert "**hardliner-plain**" not in summary                     # excerpts only against attacks
+
+    for name in ("one", "two", "three", "four", "unlisted"):
+        (ws / f"agents/toy_a/v1/configs/{name}.yaml").write_text("extends: toy_a/v1/base\nparams: {step: 0.6}\n")
+    (ws / "variants.txt").write_text("toy_a/v1/two\ntoy_a/v1/one\ntoy_a/v1/three\ntoy_a/v1/four\ntoy_a/v1/nope\n")
+    got = await rnd.collect(ws)
+    assert got.line.variants == ["toy_a/v1/later", "toy_a/v1/two", "toy_a/v1/one", "toy_a/v1/three"]
+    assert any("nope" in r for r in got.rejected) and any("four" in r for r in got.rejected)
+    assert not (agents / "toy_a/v1/configs/unlisted.yaml").exists()
+    path = rnd.write_round("round-02", [got.line], reference="boulware", bench="toy")
+    assert yaml.safe_load(path.read_text())["early_stop"] is True

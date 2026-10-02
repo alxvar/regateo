@@ -505,6 +505,10 @@ def round_export(
     candidate: Annotated[list[str], typer.Option(help="a config per architecture, e.g. single_call/v1/baseline")],
     out: Annotated[Path, typer.Option(help="folder for the workspaces, one per architecture")],
     venv: Annotated[bool, typer.Option(help="give each workspace a .venv with only the agent SDK and pytest")] = True,
+    also: Annotated[list[str] | None, typer.Option(help="a config that plays in its architecture's line too, "
+                                                        "e.g. one not measured yet")] = None,
+    redteam: Annotated[str | None, typer.Option(help="an adversarial gym run: a summary of each line's results "
+                                                     "there goes into its workspace")] = None,
     db: DbOpt = None,
 ) -> None:
     """Step 1: a workspace per candidate, holding only what its builder session may see."""
@@ -513,7 +517,7 @@ def round_export(
     async def go() -> None:
         store = await Store.open(_db(db))
         try:
-            for ws in await export(store, run, candidate, out, venv=venv):
+            for ws in await export(store, run, candidate, out, venv=venv, also=also or [], redteam=redteam):
                 typer.echo(f"wrote {ws}")
         finally:
             await store.close()

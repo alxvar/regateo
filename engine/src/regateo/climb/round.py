@@ -30,9 +30,10 @@ from regateo.cli import format as fmt
 from regateo.climb.learnings import tried
 from regateo.climb.workspace import _match
 from regateo.core.config import REPO_DIR, agents_dir, configs_dir
-from regateo.core.roles import Role
+from regateo.core.roles import Role, other
 from regateo.gym import build_gym_report
 from regateo.gym.report import ChallengerStats, GymReport
+from regateo.gym.signals import SidePlay, run_signals, sides
 from regateo.storage.store import Store
 
 META = ".regateo-round.json"
@@ -55,8 +56,12 @@ class Collected(BaseModel):
 # 1. Export
 
 
-async def export(store: Store, run_id: str, candidates: list[str], out: Path, *, venv: bool = False) -> list[Path]:
-    """One workspace per candidate under `out/<architecture>/`. `run_id`: the last gym run they all played in."""
+async def export(store: Store, run_id: str, candidates: list[str], out: Path, *, venv: bool = False,
+                 also: list[str] = (), redteam: str | None = None) -> list[Path]:
+    """One workspace per candidate under `out/<architecture>/`. `run_id`: the last gym run they all played in.
+    `also`: configs that play in their architecture's line this round besides the session's variants (e.g. one
+    made outside a round, not measured yet). `redteam`: an adversarial gym run whose results, for each line's
+    agents, go into the workspace as a summary (data/redteam.md), not as transcripts."""
     run = await store.get_run(run_id)
     if run is None or run.kind != "gym" or run.config.get("mode") != "benchmark":
         raise ValueError(f"{run_id} is not a benchmark gym run")
@@ -65,6 +70,13 @@ async def export(store: Store, run_id: str, candidates: list[str], out: Path, *,
     archs = [c.split("/")[0] for c in candidates]
     if len(set(archs)) != len(archs):
         raise ValueError("one candidate per architecture: a round has one line per architecture")
+    extra: dict[str, list[str]] = {}
+    for name in also:
+        AgentSpec.resolve(name)
+        if name.split("/")[0] not in archs:
+            raise ValueError(f"{name}: no candidate of its architecture")
+        extra.setdefault(name.split("/")[0], []).append(name)
+    rt = await _redteam_plays(store, redteam) if redteam else None
     report = await build_gym_report(store, run_id)
     subjects = {"b": report.b.label, **{c.subject: c.side.label for c in report.challengers}}
     rows = [r for r in await store.list_matches(run_id) if r.status == "done" and r.outcome]
@@ -76,12 +88,18 @@ async def export(store: Store, run_id: str, candidates: list[str], out: Path, *,
             raise ValueError(f"{candidate} didn't play in {run_id}")
         matches = [_match(r, Role(r.meta["role"]), await store.match_messages(r.id), run_id, "you")
                    for r in rows if r.meta["subject"] == subject]
-        made.append(_write_workspace(out, candidate, spec.kind.split("/")[0], subject, report, matches, venv))
+        arch = spec.kind.split("/")[0]
+        ws = _write_workspace(out, candidate, arch, subject, report, matches, venv, extra.get(arch, []),
+                              rt is not None)
+        if rt is not None:
+            labels = [AgentSpec.resolve(c).label for c in [candidate, *extra.get(arch, [])]]
+            (ws / "data" / "redteam.md").write_text(_redteam(*rt, labels))
+        made.append(ws)
     return made
 
 
 def _write_workspace(out: Path, candidate: str, arch: str, subject: str, report: GymReport, matches: list[dict],
-                     venv: bool) -> Path:
+                     venv: bool, also: list[str] = (), redteam: bool = False) -> Path:
     ws = out / arch
     if ws.exists():
         raise ValueError(f"{ws} exists")
@@ -94,9 +112,9 @@ def _write_workspace(out: Path, candidate: str, arch: str, subject: str, report:
     (ws / "data" / "results.md").write_text(_results(report, subject))
     (ws / "data" / "leaderboard.md").write_text(_leaderboard(report, subject))
     (ws / "data" / "learnings.md").write_text(tried(arch))
-    (ws / "README.md").write_text(_task(arch, candidate))
+    (ws / "README.md").write_text(_task(arch, candidate, list(also), redteam))
     shutil.copy(REPO_DIR / "docs" / "06-agent-contract.md", ws / "CONTRACT.md")
-    (ws / META).write_text(json.dumps({"arch": arch, "parent": candidate, "run": report.run_id,
+    (ws / META).write_text(json.dumps({"arch": arch, "parent": candidate, "run": report.run_id, "also": list(also),
                                        "versions": _versions(agents_dir() / arch)}, indent=2))
     if venv:
         _make_venv(ws)
@@ -157,6 +175,80 @@ def _leaderboard(report: GymReport, subject: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+async def _redteam_plays(store: Store, run_id: str) -> tuple[GymReport, list[SidePlay], set[str]]:
+    run = await store.get_run(run_id)
+    if run is None or run.kind != "gym" or run.config.get("purpose") != "adversarial":
+        raise ValueError(f"{run_id} is not an adversarial gym run")
+    plays = []
+    for row in await store.list_matches(run_id):
+        if row.status == "done":
+            plays += sides(row, await store.match_messages(row.id))
+    return await build_gym_report(store, run_id), plays, set(run.config.get("twins") or {})
+
+
+def _redteam(report: GymReport, plays: list[SidePlay], plain: set[str], labels: list[str]) -> str:
+    """What the red-team opponents cost each of `labels`: share by opponent, each attack against its plain twin,
+    the exploit signals, and the last messages of its worst match against each attack. No full transcripts: the
+    scripted attackers play the same way every time, and the point is to fix a weakness, not learn their wording."""
+    out = [f"# Red-team results (run {report.run_id})", "",
+           "Opponents written after reading our agents' code, each attacking one weakness seen in earlier rounds. "
+           "Most attacks have a plain twin: the same price moves in plain words, without the trap, on the same "
+           "scenarios and seeds. Share against the attack minus share against its twin is what the attack itself "
+           "costs. Stonewall and anchor attack with their moves, so they have no twin. `redteam:llm` is Qwen with "
+           "thinking and a brief of our agents' weaknesses; `redteam:llm-plain` is the same without the brief.", "",
+           "This bench is for finding weaknesses, not for scoring: the round is measured on the dev bench, and these "
+           "agents will be red-teamed again afterwards. Fix the weakness so it holds against any opponent; the "
+           "tournament's opponents won't use these exact words or schedules.", ""]
+    for label in labels:
+        c = next((c for c in report.challengers if c.side.label == label), None)
+        mine = [p for p in plays if p.agent == label]
+        if c is None and not mine:
+            continue
+        out += [f"## {label}", ""]
+        if c is not None:
+            out += [f"Share {fmt.est(c.side.mean_share)} against the reference's {fmt.est(c.reference.mean_share)} "
+                    f"on the same pairs; deals past your limit {c.side.past_reservation}.", "",
+                    "| opponent | you | reference | you − reference |", "|---|---|---|---|"]
+            out += [f"| {b.key} | {fmt.est(b.a)} | {fmt.est(b.b)} | {fmt.diff(b.diff)} |" for b in c.by_opponent]
+        costs = [t for t in report.twins if t.key.split(" | ", 1)[0] == label]
+        if costs:
+            out += ["", "What each attack costs you:", "",
+                    "| attack | against it | against its plain twin | cost |", "|---|---|---|---|"]
+            out += [f"| {t.key.split(' | ', 1)[1]} | {fmt.est(t.a)} | {fmt.est(t.b)} | {fmt.diff(t.diff)} |"
+                    for t in costs]
+        rows = [s for s in run_signals(mine, by_opponent=True) if s.opponent != "all"]
+        if rows:
+            out += ["", "Exploit signals (count / out of): dominated = matches where you offered worse for yourself "
+                    "than their standing offer; unreciprocated = concessions made with no move from them; missed = "
+                    "no-deals where they had offered a price within your limit; broken = offers you called final "
+                    "and conceded from; near limit = matches where you named your own walk-away price.", "",
+                    "| opponent | matches | dominated | unreciprocated | missed | broken | near limit | repeats |",
+                    "|---|---|---|---|---|---|---|---|"]
+            out += [f"| {s.opponent} | {s.matches} | {s.dominated}/{s.matches} | {s.unreciprocated}/{s.concessions} "
+                    f"| {s.missed}/{s.no_deals} | {s.broken_finals}/{s.finals} | {s.near_limit}/{s.matches} "
+                    f"| {s.repeats}/{s.turns} |" for s in rows]
+        worst = {}
+        for p in mine:
+            if p.opponent not in plain and (p.opponent not in worst
+                                            or p.outcome.share(p.role) < worst[p.opponent].outcome.share(p.role)):
+                worst[p.opponent] = p
+        if worst:
+            out += ["", "Your worst match against each attack, its last four messages:"]
+        for opponent in sorted(worst):
+            p = worst[opponent]
+            s, o = p.scenario, p.outcome
+            out += ["", f"**{opponent}**, you as {p.role.value}: your limit {s.reservation(p.role):g}, theirs "
+                    f"{s.reservation(other(p.role)):g}; " + (f"deal at {o.price:g}" if o.deal else "no deal")
+                    + f", your share {o.share(p.role):.2f}.", ""]
+            out += [f"> {'us' if m.sender is p.role else 'them'}: {_short(m.text)}" for m in p.messages[-4:]]
+    return "\n".join(out) + "\n"
+
+
+def _short(text: str, n: int = 240) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= n else text[:n - 1] + "…"
+
+
 def _make_venv(ws: Path) -> None:
     """A Python environment in the workspace with only the agent SDK and pytest: no engine to import."""
     subprocess.run(["uv", "venv", "-q", str(ws / ".venv")], check=True)
@@ -165,14 +257,23 @@ def _make_venv(ws: Path) -> None:
     (ws / "pytest.ini").write_text("[pytest]\nasyncio_mode = auto\naddopts = --import-mode=importlib\n")
 
 
-def _task(arch: str, parent: str) -> str:
+def _task(arch: str, parent: str, also: list[str] = (), redteam: bool = False) -> str:
+    also_note = (f"""
+Also in this round's line, besides your variants: {", ".join(f"`{a}`" for a in also)}, not measured on the
+benchmark yet (the journal says what it is). You may build on it instead of on `{parent}`: a variant of it
+counts as a variant like any other. Every variant is still measured against the same reference, and the best
+of the line goes on.
+""" if also else "")
+    redteam_md = ("""- `data/redteam.md`: how this line's agents did against red-team opponents written to exploit known
+  weaknesses: what each attack costs, exploit signals, and the end of the worst match against each.
+""" if redteam else "")
     return f"""# Improve a negotiating agent
 
 You are improving `{parent}`, an agent of the architecture `{arch}`. It negotiates the price of one item against
 another AI agent, as buyer or seller, in free text. Several architectures compete in this round; each is improved
 by its own session, and none can see the others. After this session, every agent's new variants play the same
 benchmark, and within each architecture only a variant that beats its parent goes on.
-
+{also_note}
 ## What you have
 
 - `agents/{arch}/`: the architecture: its versions (`v<N>/`, each with its code, `prompts/`, `configs/` and
@@ -182,7 +283,7 @@ benchmark, and within each architecture only a variant that beats its parent goe
 - `data/matches.jsonl`: every match it played: the scenario, both walk-away prices (the other side's is there
   for your analysis; the agent never knows it), the result, and every message with its own decision and how the
   referee read it.
-- `data/learnings.md`: what we have learned across architectures, and this one's journal.
+{redteam_md}- `data/learnings.md`: what we have learned across architectures, and this one's journal.
 - `CONTRACT.md`: what any agent must do, and may not. Its rules are this session's rules.
 - The agent SDK, the only thing agent code may import from our side, is installed in `.venv`
   (`.venv/bin/python`, `.venv/bin/pytest`, `.venv/bin/regateo-agent`); its source is in
@@ -212,6 +313,11 @@ Up to {MAX_VARIANTS} variants of `{parent}`, each testing one hypothesis:
   and its configs. Never change an existing version or `lib/`: they have results, and changing them would make
   those results meaningless. Put new shared code in your new version.
 - Run `regateo-agent check` and `pytest agents/{arch}` on what you made.
+- **List them** in `variants.txt` in this folder, one per line, as `{arch}/<version>/<config>` (e.g.
+  `{arch}/v2/firmer`): only the configs listed there are measured.
+- **Journal:** add an entry at the end of `agents/{arch}/JOURNAL.md`: for each variant, its name, the failure it
+  targets with evidence from the data, the hypothesis, and what result would prove it wrong. Don't edit earlier
+  entries.
 
 ## The shell
 
@@ -221,9 +327,6 @@ and `diff`. Anything else is refused, including `cd`, `cat`, `rm`, paths like `.
 with `;`, `&&` or pipes into other programs. So: one program per command, run from here (for example
 `pytest agents/{arch} -q` or `regateo-agent check agents/{arch}/v2`). Read files with the Read tool, write them
 with Write and Edit, and do analysis in a script you write to a file and run with `python <file>`.
-- **Journal:** add an entry at the end of `agents/{arch}/JOURNAL.md`: for each variant, its name, the failure it
-  targets with evidence from the data, the hypothesis, and what result would prove it wrong. Don't edit earlier
-  entries.
 
 Work only inside this folder.
 """
@@ -233,11 +336,16 @@ Work only inside this folder.
 
 
 async def collect(ws: Path, *, smoke: bool = True) -> Collected:
-    """Copy a session's new versions, configs and journal entry into agents/, after checking them."""
+    """Copy a session's new versions, configs and journal entry into agents/, after checking them. The variants are
+    the configs the session listed in variants.txt (without one, its new configs in name order), at most
+    MAX_VARIANTS, after the export's `also` configs."""
     meta = json.loads((ws / META).read_text())
     arch, parent = meta["arch"], meta["parent"]
     src, dst = ws / "agents" / arch, agents_dir() / arch
-    line, rejected = Line(arch=arch, parent=parent), []
+    line, rejected = Line(arch=arch, parent=parent, variants=list(meta.get("also", []))), []
+    listed = None
+    if (ws / "variants.txt").exists():
+        listed = [x.strip() for x in (ws / "variants.txt").read_text().splitlines() if x.strip()]
     packages.mount(agents_dir())
     new_versions, new_configs = [], []
     for v in sorted(p for p in src.iterdir() if p.is_dir()):
@@ -264,19 +372,31 @@ async def collect(ws: Path, *, smoke: bool = True) -> Collected:
             rejected.append(str(e))
             continue
         new_configs += [(name, c) for c in sorted((dst / name / "configs").glob("*.yaml"))]
+    made = {f"{arch}/{version}/{path.stem}": (version, path) for version, path in new_configs}
+    if listed is not None:
+        rejected += [f"{name} (variants.txt): not a new config of this session" for name in listed if name not in made]
+        for name in made.keys() - set(listed):
+            version, path = made[name]
+            if version in new_versions:          # copied with its version: an unlisted config doesn't stay
+                (dst / version / "configs" / path.name).unlink(missing_ok=True)
+        new_configs = [made[name] for name in dict.fromkeys(listed) if name in made]
+    taken = 0
     for version, path in new_configs:
-        if len(line.variants) >= MAX_VARIANTS:
-            rejected.append(f"{version}/{path.stem}: more than {MAX_VARIANTS} variants")
+        name = f"{arch}/{version}/{path.stem}"
+        if taken >= MAX_VARIANTS:
+            rejected.append(f"{name}: more than {MAX_VARIANTS} variants")
+            if version in new_versions:
+                (dst / version / "configs" / path.name).unlink(missing_ok=True)
             continue
         target = dst / version / "configs" / path.name
         if not target.exists():
             shutil.copy(path, target)
-        name = f"{arch}/{version}/{path.stem}"
         if (why := await _try(name, smoke)) is not None:
             target.unlink()
             rejected.append(f"{name}: {why}")
             continue
         line.variants.append(name)
+        taken += 1
     for name in new_versions:                    # a new version none of whose configs made it goes too
         if (dst / name).exists() and not any(v.startswith(f"{arch}/{name}/") for v in line.variants):
             shutil.rmtree(dst / name)
@@ -344,7 +464,8 @@ def write_round(name: str, lines: list[Line], *, reference: str, bench: str = "s
     if not challengers:
         raise ValueError("nothing to measure: no line has a member other than the reference")
     gym = {"name": name, "bench": bench, "reference": reference, "challengers": challengers,
-           "halving": True, "lines": {AgentSpec.resolve(m).label: arch for m, arch in members.items()},
+           "halving": True, "early_stop": True,
+           "lines": {AgentSpec.resolve(m).label: arch for m, arch in members.items()},
            "settings": {"concurrency": 32, "cache": "readwrite"}}
     path = configs_dir() / "gym" / f"{name}.yaml"
     path.write_text(f"# Climb round {name} (regateo.climb.round): {len(lines)} lines.\n"

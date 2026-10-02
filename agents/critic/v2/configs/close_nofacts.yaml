@@ -1,0 +1,3 @@
+# v2 prompts and critic without the facts line: separates the prompts' effect from the facts'.
+extends: close
+params: {facts: false}

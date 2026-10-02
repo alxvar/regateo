@@ -18,11 +18,12 @@ V1 = (REAL / "v1" / "prompts" / "negotiator_system.v1.md").read_text()
 
 @pytest.fixture
 def configs(tmp_path, monkeypatch):
-    """A copy of the single_call architecture with one config, `single_call/v1/base` (plain O1 on Qwen)."""
+    """A copy of the single_call architecture's v1 with one config, `single_call/v1/base` (plain O1 on Qwen)."""
     (tmp_path / "gym").mkdir()
     (tmp_path / "benches").mkdir()
     arch = tmp_path / "agents" / "single_call"
-    shutil.copytree(REAL, arch, ignore=shutil.ignore_patterns("configs", "tests", "__pycache__"))
+    later = [v.name for v in REAL.iterdir() if v.is_dir() and v.name.startswith("v") and v.name != "v1"]
+    shutil.copytree(REAL, arch, ignore=shutil.ignore_patterns("configs", "tests", "__pycache__", *later))
     (arch / "v1" / "configs").mkdir()
     (arch / "v1" / "configs" / "base.yaml").write_text("model: qwen-local\n")
     (tmp_path / "docs" / "experiments").mkdir(parents=True)

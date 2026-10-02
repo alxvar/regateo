@@ -1,0 +1,3 @@
+# Each turn the model is told which of its messages this is and what follows the last one.
+extends: tools/v1/call
+params: {endgame: true}

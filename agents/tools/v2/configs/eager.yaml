@@ -1,0 +1,4 @@
+# Every argument-free tool is run each turn and shown before the one call: does advice change behaviour when
+# the model can't skip it? 1 call per turn.
+extends: call
+params: {tool_mode: eager}

@@ -1,0 +1,3 @@
+# v1's `call` on v2's code: our offers read reliably for the fallback, a model error retried once.
+extends: tools/v1/call
+params: {}

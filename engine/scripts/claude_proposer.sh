@@ -31,6 +31,7 @@ echo '{"hasCompletedOnboarding": true}' > "$SANDBOX_HOME/.claude.json"
 bwrap \
   --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 \
   --symlink usr/sbin /sbin --ro-bind /etc /etc \
+  --ro-bind-try /run/systemd/resolve /run/systemd/resolve \
   --proc /proc --dev /dev --tmpfs /tmp \
   --bind "$SANDBOX_HOME" /home/proposer \
   --bind "$CREDS" /home/proposer/.claude/.credentials.json \

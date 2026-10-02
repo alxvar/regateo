@@ -1,0 +1,5 @@
+# Hypothesis: most vetoes (39% of our messages in the baseline run, 21% ending in the "I can do $X." repair)
+# come from the model quoting the other side's out-of-range price while rejecting it. Telling it not to
+# quote prices should cut vetoes and repairs and keep the model's own wording and price.
+extends: single_call/v1/baseline
+params: {prompt: negotiator_system.v4}

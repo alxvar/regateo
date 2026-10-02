@@ -1,0 +1,3 @@
+# v2: facts line + closing-minded prompts, critic reviews and a flagged draft is rewritten once. 2-3 calls per turn.
+model: qwen-local
+params: {critic: revise}

@@ -1,0 +1,4 @@
+# The prompt says which amounts the message check blocks; a draft that fails twice loses only the offending
+# sentences instead of becoming a bare "I can do $X."
+extends: tools/v1/call
+params: {sanitize: true, prompt: negotiator_system.v2}

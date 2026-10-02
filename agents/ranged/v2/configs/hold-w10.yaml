@@ -1,0 +1,3 @@
+# hold, with the negotiator held to 10% of the market range around the strategist's target.
+extends: ranged/v2/hold
+params: {width: 0.1}

@@ -1,0 +1,3 @@
+# guided, with the negotiator seeing the whole conversation instead of the last 6 messages.
+extends: guided
+params: {window: 0}

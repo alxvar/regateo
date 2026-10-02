@@ -1,0 +1,3 @@
+# v1's band, with a strategist that sees a ledger of both sides' offers and ties each concession to their movement.
+extends: ranged/v1/band
+params: {hold: true}

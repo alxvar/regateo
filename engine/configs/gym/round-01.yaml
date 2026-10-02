@@ -1,0 +1,46 @@
+# Climb round round-01 (regateo.climb.round): 5 lines.
+# By hand after collect: tools/v2/sanitize in place of tools/v2/eager (collect took v2's first three configs
+# alphabetically; the session's three were call, endgame and sanitize), and early stopping on (docs/04 §8).
+name: round-01
+bench: standard-v2
+reference: single_call/v1/baseline
+challengers:
+- single_call/v2/no-quote
+- single_call/v2/retry3
+- tools/v1/call
+- tools/v2/call
+- tools/v2/sanitize
+- tools/v2/endgame
+- ranged/v1/band
+- ranged/v2/hold-w10
+- ranged/v2/hold
+- strategist/v1/k2
+- strategist/v2/guided-full
+- strategist/v2/guided
+- critic/v1/revise
+- critic/v2/close
+- critic/v2/close_nofacts
+- critic/v2/close_solo
+halving: true
+early_stop: true
+lines:
+  single_call-v1-baseline: single_call
+  single_call-v2-no-quote: single_call
+  single_call-v2-retry3: single_call
+  tools-v1-call: tools
+  tools-v2-call: tools
+  tools-v2-sanitize: tools
+  tools-v2-endgame: tools
+  ranged-v1-band: ranged
+  ranged-v2-hold-w10: ranged
+  ranged-v2-hold: ranged
+  strategist-v1-k2: strategist
+  strategist-v2-guided-full: strategist
+  strategist-v2-guided: strategist
+  critic-v1-revise: critic
+  critic-v2-close: critic
+  critic-v2-close_nofacts: critic
+  critic-v2-close_solo: critic
+settings:
+  concurrency: 32
+  cache: readwrite

@@ -8,9 +8,10 @@
 #   for ws in ROUND_DIR/*/; do scripts/claude_builder.sh "$ws" & done; wait
 #
 # Isolation, as scripts/claude_proposer.sh: bubblewrap shows it the system's programs (read-only), the
-# workspace, and the Python installs its .venv points to (read-only), nothing else: not this repo, not the
-# engine, not other architectures, not your home folder or keys. The workspace is mounted at its own path, so
-# the .venv's scripts (pytest, regateo-agent) work; the .venv holds only the agent SDK and pytest. Its home is
+# workspace, the DNS resolver's folder (/etc/resolv.conf links into /run/systemd/resolve) and the Python
+# installs its .venv points to (read-only), nothing else: not this repo, not the engine, not other
+# architectures, not your home folder or keys. The workspace is mounted at its own path, so the .venv's
+# scripts (pytest, regateo-agent) work; the .venv holds only the agent SDK and pytest. Its home is
 # an empty temp folder with only your Claude Code login. It keeps network access, which it needs for the API.
 # Permissions: dontAsk, so anything not in --allowedTools is refused: file tools, and shell commands only for
 # the workspace's python, pytest and regateo-agent, and a few read-only ones.
@@ -42,6 +43,7 @@ echo '{"hasCompletedOnboarding": true}' > "$SANDBOX_HOME/.claude.json"
 bwrap \
   --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 \
   --symlink usr/sbin /sbin --ro-bind /etc /etc \
+  --ro-bind-try /run/systemd/resolve /run/systemd/resolve \
   --proc /proc --dev /dev --tmpfs /tmp \
   --bind "$SANDBOX_HOME" /home/builder \
   --bind "$CREDS" /home/builder/.claude/.credentials.json \

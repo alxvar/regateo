@@ -1,0 +1,3 @@
+# v2 drafter (facts line + closing-minded prompt) without a critic: separates the prompt's effect from the critic's.
+extends: close
+params: {critic: "off"}

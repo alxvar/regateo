@@ -127,3 +127,30 @@ async def test_holdout_runs_are_not_exported(world):
                                                    "challengers": ["toy_a/v1/base"]}), store)
     with pytest.raises(ValueError, match="not a dev run"):
         await rnd.export(store, run, ["toy_a/v1/base"], world / "round")
+
+
+async def test_the_reference_can_be_a_lines_parent(world):
+    """The reference's own line: its parent plays as B, and a variant replaces it only by beating it."""
+    agents = world / "agents"
+    (agents / "toy_a/v1/configs/slower.yaml").write_text("extends: toy_a/v1/base\nparams: {step: 0.5}\n")
+    (agents / "toy_a/v1/configs/faster.yaml").write_text("extends: toy_a/v1/base\nparams: {step: 3.0}\n")
+    lines = [rnd.Line(arch="toy_a", parent="toy_a/v1/base", variants=["toy_a/v1/slower", "toy_a/v1/faster"]),
+             rnd.Line(arch="toy_b", parent="toy_b/v1/base")]
+    path = rnd.write_round("round-01", lines, reference="toy_a/v1/base", bench="toy")
+    spec = GymSpec.model_validate(yaml.safe_load(path.read_text()))
+    assert [s.label for s in spec.subjects().values()] == ["toy_a-v1-slower", "toy_a-v1-base", "toy_a-v1-faster",
+                                                           "toy_b-v1-base"]
+    with pytest.raises(ValueError, match="nothing to measure"):
+        rnd.write_round("round-02", [rnd.Line(arch="toy_a", parent="toy_a/v1/base")], reference="toy_a/v1/base",
+                        bench="toy")
+
+    store = await Store.open(world / "db")
+    spec = spec.model_copy(update={"halving": spec.halving.model_copy(update={"first": 4})})
+    run, _ = await run_gym(spec, store)
+    report = await build_gym_report(store, run)
+    finalist = next(c for c in report.challengers if c.halved_at is None and spec.lines[c.side.label] == "toy_a")
+    parents = await rnd.record(store, run)
+    beat = (finalist.diff.mean_diff or 0) > 0
+    assert parents["toy_a"] == (f"toy_a/v1/{finalist.side.label.removeprefix('toy_a-v1-')}" if beat else
+                                "toy_a/v1/base")
+    assert "`toy_a/v1/base` (the reference): 0" in (agents / "toy_a/JOURNAL.md").read_text()

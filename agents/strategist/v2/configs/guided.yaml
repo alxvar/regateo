@@ -1,0 +1,3 @@
+# v1/k2 with clearer prompts, a plan that can hold or step, an endgame rule and per-turn facts.
+model: qwen-local
+params: {strategist_model: qwen-local-think, replan_every: 2}

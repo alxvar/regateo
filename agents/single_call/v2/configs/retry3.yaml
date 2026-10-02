@@ -1,0 +1,4 @@
+# Hypothesis: a third draft with the veto feedback (and no repetition of identical feedback) converts
+# turns that today fall to the terse repair into real model moves.
+extends: single_call/v1/baseline
+params: {attempts: 3}

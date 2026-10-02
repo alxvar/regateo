@@ -212,6 +212,15 @@ Up to {MAX_VARIANTS} variants of `{parent}`, each testing one hypothesis:
   and its configs. Never change an existing version or `lib/`: they have results, and changing them would make
   those results meaningless. Put new shared code in your new version.
 - Run `regateo-agent check` and `pytest agents/{arch}` on what you made.
+
+## The shell
+
+The shell allows only these programs, called by their bare name from this folder: `python`, `python3`,
+`pytest`, `regateo-agent` (all from `.venv`, already on PATH), `cp`, `mkdir`, `ls`, `wc`, `head`, `tail`, `jq`
+and `diff`. Anything else is refused, including `cd`, `cat`, `rm`, paths like `.venv/bin/python`, and chains
+with `;`, `&&` or pipes into other programs. So: one program per command, run from here (for example
+`pytest agents/{arch} -q` or `regateo-agent check agents/{arch}/v2`). Read files with the Read tool, write them
+with Write and Edit, and do analysis in a script you write to a file and run with `python <file>`.
 - **Journal:** add an entry at the end of `agents/{arch}/JOURNAL.md`: for each variant, its name, the failure it
   targets with evidence from the data, the hypothesis, and what result would prove it wrong. Don't edit earlier
   entries.
@@ -327,9 +336,14 @@ async def _try(name: str, smoke: bool) -> str | None:
 
 def write_round(name: str, lines: list[Line], *, reference: str, bench: str = "standard-v2") -> Path:
     """The round's gym config: every line's parent and variants against `reference`, with successive halving
-    within each line down to one finalist, the line's next parent."""
+    within each line down to one finalist, the line's next parent. When the reference is a line's parent, it
+    plays as B, and its variants have to beat it (Δshare > 0) to replace it."""
     members = {m: line.arch for line in lines for m in [line.parent, *line.variants]}
-    gym = {"name": name, "bench": bench, "reference": reference, "challengers": list(members),
+    ref = AgentSpec.resolve(reference).label
+    challengers = [m for m in members if AgentSpec.resolve(m).label != ref]   # a reference line's parent is B
+    if not challengers:
+        raise ValueError("nothing to measure: no line has a member other than the reference")
+    gym = {"name": name, "bench": bench, "reference": reference, "challengers": challengers,
            "halving": True, "lines": {AgentSpec.resolve(m).label: arch for m, arch in members.items()},
            "settings": {"concurrency": 32, "cache": "readwrite"}}
     path = configs_dir() / "gym" / f"{name}.yaml"
@@ -348,18 +362,24 @@ async def record(store: Store, run_id: str) -> dict[str, str]:
         raise ValueError(f"{run_id} is not a climb round (no lines)")
     report = await build_gym_report(store, run_id)
     labels = {AgentSpec.model_validate(s).label: AgentSpec.model_validate(s)
-              for s in [run.config["a"], *run.config.get("extra", [])]}
+              for s in [run.config["a"], run.config["b"], *run.config.get("extra", [])]}
     by_line: dict[str, list[ChallengerStats]] = {}
     for c in report.challengers:
         by_line.setdefault(run.config["lines"].get(c.side.label, c.side.label), []).append(c)
+    ref_line = run.config["lines"].get(report.b.label)      # the line whose parent is the reference, if any
     parents = {}
     for arch, members in by_line.items():
         full = [c for c in members if c.halved_at is None and c.stopped_at is None]
         best = max(full or members, key=lambda c: (c.diff.mean_diff or -1e9))
-        parents[arch] = _config_name(labels[best.side.label])
+        if arch == ref_line and (not full or (best.diff.mean_diff or 0) <= 0):
+            best = None                                     # no variant beat the reference: it stays the parent
+        parents[arch] = _config_name(labels[best.side.label if best else report.b.label])
         rows = [f"- `{_config_name(labels[c.side.label])}`: {fmt.diff(c.diff)}"
                 + (f", cut after {c.halved_at} pairs" if c.halved_at is not None else "")
                 + (" **(next parent)**" if c is best else "") for c in members]
+        if arch == ref_line:
+            rows.insert(0, f"- `{_config_name(labels[report.b.label])}` (the reference): 0"
+                        + (" **(next parent)**" if best is None else ""))
         journal = agents_dir() / arch / "JOURNAL.md"
         if journal.exists():
             journal.write_text(journal.read_text().rstrip() + f"\n\n**Round {run.name}** ({run_id}), Δshare against "

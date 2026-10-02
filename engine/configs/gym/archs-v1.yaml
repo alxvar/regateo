@@ -1,0 +1,10 @@
+# First versions of docs/02's O3-O6, one config each (O5 with and without thinking), against the baseline
+# (single_call/v1/baseline, which is O2) on the dev bench v2 (docs/06 §6). O1 is single_call/v1/o1-qwen.
+# Successive halving with early stopping, so clear losers stop early (docs/05 L18).
+name: archs-v1
+bench: standard-v2
+reference: single_call/v1/baseline
+challengers: [tools/v1/call, ranged/v1/band, strategist/v1/k2, strategist/v1/k2-fast, critic/v1/revise]
+halving: true
+early_stop: true
+settings: {concurrency: 32, cache: readwrite}

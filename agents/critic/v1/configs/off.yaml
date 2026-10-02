@@ -1,0 +1,3 @@
+# Ablation: the drafter and the code vetoes without a critic. 1 call per turn.
+extends: revise
+params: {critic: "off"}

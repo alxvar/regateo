@@ -1,0 +1,3 @@
+# The strategist without thinking: how much the deeper reasoning helps at the same cadence.
+extends: k2
+params: {strategist_model: qwen-local}

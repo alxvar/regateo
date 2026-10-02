@@ -1,0 +1,3 @@
+# The strategist plans every turn: what planning more often buys. 2 calls per turn.
+extends: k2
+params: {replan_every: 1}

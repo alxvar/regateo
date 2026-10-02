@@ -1,0 +1,4 @@
+# O4 with the band set by a strategist call, not by code (docs/06 §3.3): the negotiator picks the price inside
+# it and never sees the walk-away price. 2 calls per turn (strategist, negotiator).
+model: qwen-local
+params: {width: strategist}

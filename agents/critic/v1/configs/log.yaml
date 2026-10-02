@@ -1,0 +1,4 @@
+# docs/02's key experiment for O6: the critic only records its review and the draft is always sent, so its
+# catches and false alarms can be counted against the transcripts. 2 calls per turn.
+extends: revise
+params: {critic: log}

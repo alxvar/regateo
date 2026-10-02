@@ -1,0 +1,3 @@
+# The strategist's band, with the negotiator also told the walk-away price: what least privilege costs or saves.
+extends: band
+params: {negotiator_sees_limit: true}

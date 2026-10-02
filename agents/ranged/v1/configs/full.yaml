@@ -1,0 +1,3 @@
+# Full width: only the walk-away price binds, the target is a suggestion. Close to O2 with a strategist's hint.
+extends: band
+params: {width: full}

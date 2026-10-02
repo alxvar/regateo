@@ -1,0 +1,4 @@
+# O3 as drawn in docs/02: the model may call the advisor tools (facts and price suggestions), sees their
+# results, then decides. Hard limits and agreement words are vetoed in code. 1-2 calls per turn.
+model: qwen-local
+params: {tool_mode: call}

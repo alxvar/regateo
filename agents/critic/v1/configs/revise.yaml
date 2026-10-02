@@ -1,0 +1,4 @@
+# O6: the drafter decides, code vetoes the hard limits, a critic call reviews the draft and a flagged draft is
+# rewritten once with the review. 2 calls per turn, 3 when a draft is revised.
+model: qwen-local
+params: {critic: revise}

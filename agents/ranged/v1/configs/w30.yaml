@@ -1,0 +1,3 @@
+# A band of 30% of the market range around the strategist's target.
+extends: band
+params: {width: 0.3}

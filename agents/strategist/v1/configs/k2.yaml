@@ -1,0 +1,5 @@
+# O5: Qwen with thinking plans every 2 of our messages (and when the negotiator says the plan no longer fits);
+# plain Qwen negotiates every turn from the plan and the last 6 messages. 1.5 calls per turn on average,
+# the strategist's being slow.
+model: qwen-local
+params: {strategist_model: qwen-local-think, replan_every: 2}

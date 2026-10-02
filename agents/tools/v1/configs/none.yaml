@@ -1,0 +1,4 @@
+# Ablation: the same prompt and vetoes without any tools, so call and eager have a reference inside this
+# architecture. 1 call per turn.
+extends: call
+params: {tool_mode: none}

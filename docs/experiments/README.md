@@ -2,9 +2,12 @@
 
 One file per question: `NNN-<question>.md`. Null results count: they stop us from testing the same idea twice.
 
-**Current reference:** `single_call/v1/baseline`, set up 2026-09-30 from the experiments before it. Measured on
-`standard-v1` and `holdout-v1`; it still has to be measured on `standard-v2` and `holdout-v2` (`regateo gym baseline-v2`,
-`regateo gym baseline-holdout-v2`), the benches every new experiment uses.
+**Current reference:** `ranged/v4/clock-standing`, promoted 2026-10-02 from climb round 2
+([002-climb-round-2.md](002-climb-round-2.md)). Against the previous reference `single_call/v1/baseline`: +0.141 on
+`standard-v2` (run_01a0fc0e5d2cb2a609fb), +0.188 on `holdout-v2` (run_01a0fc50ff316d57faad), +0.074 on
+`adversarial-v1` (run_01a0fc97151ff081a314), no deal past its limit on any of them. It costs two model calls per turn
+(strategist, then negotiator), about 2.5 times the baseline's tokens per match.
+Before it: `single_call/v1/baseline`, set up 2026-09-30 ([000-baseline.md](000-baseline.md)).
 What we believe across all experiments, and why the baseline is built as it is: [05-learnings.md](../05-learnings.md).
 
 ## How to run a variant

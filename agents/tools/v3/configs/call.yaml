@@ -1,0 +1,4 @@
+# v1's `call` on v3's code: v2's fixes, and an acceptance checked at the price its message names instead of
+# vetoed whenever their message names any amount past our limit. 1-2 calls per turn (plus a retry on a veto).
+extends: tools/v1/call
+params: {}

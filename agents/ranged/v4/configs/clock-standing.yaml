@@ -1,0 +1,5 @@
+# v3's hold-standing (the veto on offers worse for us than theirs) on v4's code, with the clock: the strategist is
+# shown when the negotiation ends and how close the offers are, and is told to close a small gap before the
+# messages run out. ranged/v4/hold-standing is the same agent without the clock.
+extends: ranged/v3/hold-standing
+params: {clock: true}

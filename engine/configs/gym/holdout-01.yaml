@@ -1,0 +1,10 @@
+# The holdout (docs/04-hill-climbing.md §3.1, §4) for round-02's finalists, one per line: ranged/v4/clock-standing
+# and tools/v1/call, against the reference. They pass if their Δshare points the same way as on dev (it need not
+# be significant), with no deal past the limit and the gates within 0.10. Nobody reads these transcripts for ideas.
+name: holdout-01
+bench: holdout-v2
+reference: single_call/v1/baseline
+challengers:
+  - ranged/v4/clock-standing
+  - tools/v1/call
+settings: {concurrency: 32, cache: readwrite}

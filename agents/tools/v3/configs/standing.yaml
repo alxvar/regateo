@@ -1,0 +1,4 @@
+# v3/call plus the opt-in standing-offer check (agent_sdk.guards.standing_problems, approved 2026-10-02): an
+# offer worse for us than their standing offer is vetoed once; a second such draft is sent as written.
+extends: tools/v1/call
+params: {standing: true}

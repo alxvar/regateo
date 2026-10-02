@@ -1,0 +1,4 @@
+# v3's hold-standing on v4's code: the same agent but for the ledger's direction of their movement, which v2 and
+# v3 had inverted. The control for the clock: ranged/v4/clock-standing is this with the clock on.
+extends: ranged/v3/hold-standing
+params: {standing: true}

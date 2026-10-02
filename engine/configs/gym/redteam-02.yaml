@@ -1,0 +1,11 @@
+# Round-02's finalists against the red-team opponents (adversarial-v1), after the holdout. The reference and
+# tools/v1/call played the same bench in redteam-01 and replay from the cache; ranged/v4/clock-standing is new.
+# Its builder saw redteam-01's summary (not its transcripts), so read gains against the scripted attacks with
+# that in mind: redteam:llm, which adapts, is the fairer test.
+name: redteam-02
+bench: adversarial-v1
+reference: single_call/v1/baseline
+challengers:
+  - ranged/v4/clock-standing
+  - tools/v1/call
+settings: {concurrency: 32, cache: readwrite}

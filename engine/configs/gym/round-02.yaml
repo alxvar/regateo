@@ -1,0 +1,29 @@
+# Climb round round-02 (regateo.climb.round): 2 lines.
+# Builders: Claude Code with claude-opus-5-5, effort high, from round-01's dev run and redteam-01's summary.
+# Sonnet 5.5's variants from the same inputs are on branch round-02-sonnet, not measured. By hand before the
+# run: left out tools/v3/horizon (it tells the model the platform allows 5 to 10 messages, which no known rule
+# says) and ranged/v3/hold-standing (v4/hold-standing is the same with v4's ledger fix).
+name: round-02
+bench: standard-v2
+reference: single_call/v1/baseline
+challengers:
+- ranged/v2/hold
+- ranged/v4/clock-standing
+- ranged/v4/hold-standing
+- ranged/v4/clock-standing-plain
+- tools/v1/call
+- tools/v3/call
+- tools/v3/standing
+halving: true
+early_stop: true
+lines:
+  ranged-v2-hold: ranged
+  ranged-v4-clock-standing: ranged
+  ranged-v4-hold-standing: ranged
+  ranged-v4-clock-standing-plain: ranged
+  tools-v1-call: tools
+  tools-v3-call: tools
+  tools-v3-standing: tools
+settings:
+  concurrency: 32
+  cache: readwrite

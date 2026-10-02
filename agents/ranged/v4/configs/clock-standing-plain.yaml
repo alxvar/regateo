@@ -1,0 +1,4 @@
+# clock-standing, with a negotiator told not to call an offer final unless it is its last message.
+# ranged/v4/clock-standing is the same agent without it.
+extends: ranged/v4/clock-standing
+params: {plain_final: true}

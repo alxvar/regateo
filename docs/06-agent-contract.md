@@ -69,7 +69,7 @@ Code may enforce hard invariants. It must not decide what to offer, how much to 
 2. A message that doesn't accept must not read as accepting.
 3. Never reveal the walk-away price.
 
-The baseline's vetoes enforce the first two. The SDK has checks for them, `agent_sdk.guards`: `limit_problems` (the walk-away price, including prices written in the message) and `reads_as_agreement` (any agreement vocabulary). They only report what is wrong with a move, as feedback a model can act on; what to do about it stays with the agent. You may use them or enforce the rules your own way. The first one is a promotion gate: a single deal past the limit on any bench fails the candidate outright.
+The baseline's vetoes enforce the first two. The SDK has checks for them, `agent_sdk.guards`: `limit_problems` (the walk-away price, including prices written in the message) and `reads_as_agreement` (any agreement vocabulary). It also has one opt-in check beyond the invariants, `standing_problems`: an offer worse for us than the other side's standing offer. The user approved it on 2026-10-02 for agents that want it, behind a switch (off by default). They only report what is wrong with a move, as feedback a model can act on; what to do about it stays with the agent. You may use them or enforce the rules your own way. The first one is a promotion gate: a single deal past the limit on any bench fails the candidate outright.
 
 ## 4. `Move.meta`
 

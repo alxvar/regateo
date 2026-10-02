@@ -56,6 +56,25 @@ def limit_problems(view: PrivateView, action: ActionKind | str, price: float | N
     return problems
 
 
+def standing_problems(view: PrivateView, action: ActionKind | str, price: float | None,
+                      their_offer: float | None) -> list[str]:
+    """An offer worse for us than the other side's standing offer, as feedback a model can act on. Empty: none.
+
+    Accepting their offer would get more, so the model is asked to accept it or offer something better for us
+    than it; which, stays with the model. Pass `their_offer` read defensively (the amount of their own worst for
+    us in their latest message that names one), so a planted or quoted amount can't make the check fire. An
+    opt-in check for agents that want it (docs/06 §3.4): the user approved it behind a switch, 2026-10-02.
+    """
+    if ActionKind(action) is not ActionKind.OFFER or price is None or their_offer is None:
+        return []
+    s = sign(view.role)
+    if s * price >= s * their_offer - TOLERANCE:
+        return []
+    theirs, ours = fmt_price(their_offer, view.currency), fmt_price(price, view.currency)
+    return [f"their latest offer, {theirs}, is already better for you than your offer of {ours}. Accept their "
+            f"offer, or offer a price better for you than {theirs}."]
+
+
 def reads_as_agreement(message: str) -> bool:
     """True when the message uses any agreement vocabulary, negated or not. A message that doesn't accept
     should not, since the reader that decides whether a deal closed is unknown."""

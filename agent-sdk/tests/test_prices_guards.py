@@ -1,5 +1,5 @@
 from agent_sdk import ActionKind, PrivateView, Role
-from agent_sdk.guards import limit_problems, past_limit, reads_as_agreement
+from agent_sdk.guards import limit_problems, past_limit, reads_as_agreement, standing_problems
 from agent_sdk.prices import find_prices, fmt_price, stated_prices
 
 SELLER = PrivateView(role=Role.SELLER, item="bike", currency="USD", reservation=100, market_low=80, market_high=180,
@@ -32,3 +32,14 @@ def test_reads_as_agreement():
     assert reads_as_agreement("Ready to ship the moment we agree. $150.")
     assert reads_as_agreement("I can't accept that.")
     assert not reads_as_agreement("I can do $150.")
+
+
+def test_standing_problems():
+    buyer = SELLER.model_copy(update={"role": Role.BUYER, "reservation": 150})
+    assert "already better for you" in standing_problems(SELLER, "offer", 120, 130)[0]   # seller below their bid
+    assert standing_problems(SELLER, "offer", 140, 130) == []
+    assert standing_problems(SELLER, "offer", 130, 130) == []
+    assert "$91" in standing_problems(buyer, ActionKind.OFFER, 135, 91)[0]               # buyer above their ask
+    assert standing_problems(buyer, "offer", 85, 91) == []
+    assert standing_problems(SELLER, "accept", 120, 130) == []
+    assert standing_problems(SELLER, "offer", 120, None) == []
